@@ -1,0 +1,1426 @@
+{% extends 'base.html' %}
+
+{% block title %}Отчёт и аналитика | POS Система{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js 4.x CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+    .analytics-tab-btn {
+        padding: 0.65rem 1.25rem;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.88rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+    .analytics-tab-btn:hover {
+        background: #f8fafc;
+        color: var(--text-main);
+        border-color: #94a3b8;
+    }
+    .analytics-tab-btn.active {
+        background: var(--accent-primary);
+        color: #ffffff;
+        border-color: var(--accent-primary);
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+    }
+
+    .analytics-tab-content {
+        display: none;
+        animation: fadeIn 0.25s ease-in-out;
+    }
+    .analytics-tab-content.active {
+        display: block;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .abc-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        font-weight: 800;
+        font-size: 0.8rem;
+    }
+    .abc-a { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .abc-b { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+    .abc-c { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+
+    .daypart-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .mini-bar {
+        background: #f1f5f9;
+        border-radius: 6px;
+        height: 8px;
+        overflow: hidden;
+    }
+    .mini-bar-fill {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.5s ease;
+    }
+
+    @media print {
+        .sidebar, .top-actions-bar, .analytics-tabs-nav, .date-filter-box {
+            display: none !important;
+        }
+        .main-content {
+            max-width: 100% !important;
+            padding: 0 !important;
+            overflow: visible !important;
+        }
+        .analytics-tab-content {
+            display: block !important;
+            margin-bottom: 2rem;
+            page-break-inside: avoid;
+        }
+        .print-header {
+            display: block !important;
+            margin-bottom: 1.5rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-content" style="max-width: 1300px; margin: 0 auto; width: 100%; overflow-y: auto; padding: 1.5rem 1.5rem 3.5rem;">
+
+    <!-- Заголовок для печати (виден только при печати) -->
+    <div class="print-header" style="display: none; border-bottom: 2px solid #0f172a; padding-bottom: 1rem;">
+        <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a;">Smart POS | Отчёт по продажам и аналитика</h1>
+        <p style="color: #64748b; font-size: 0.9rem;">Период: {{ start_date|date:"d.m.Y" }} — {{ end_date|date:"d.m.Y" }} | Напечатано: {% now "d.m.Y H:i" %}</p>
+    </div>
+
+    <!-- Заголовок и кнопки действий -->
+    <div class="top-header top-actions-bar" style="margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.6rem;">
+                <i class="fa-solid fa-chart-pie" style="color: var(--accent-primary);"></i>
+                Отчёт и Бизнес-Аналитика
+            </h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.2rem;">
+                Выручка, чистая прибыль, ABC-анализ, пиковые часы и оборачиваемость товаров (₸)
+            </p>
+        </div>
+
+        <!-- Быстрые действия: Печать и Экспорт CSV -->
+        <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+            <button onclick="window.print()" class="category-pill" style="border: 1px solid #cbd5e1; background: #fff; color: var(--text-main); cursor: pointer;" title="Печать отчёта">
+                <i class="fa-solid fa-print"></i> Печать
+            </button>
+            <button onclick="exportReportCSV()" class="category-pill" style="border: 1px solid #10b981; background: #ecfdf5; color: var(--accent-primary); cursor: pointer;" title="Скачать в формате Excel / CSV">
+                <i class="fa-solid fa-file-excel"></i> Excel (CSV)
+            </button>
+        </div>
+    </div>
+
+    <!-- Фильтр периода -->
+    <div class="date-filter-box" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; background: #ffffff; padding: 0.75rem 1rem; border-radius: 14px; border: 1px solid #e2e8f0;">
+        <a href="?period=today" class="category-pill {% if period == 'today' %}active{% endif %}">
+            <i class="fa-solid fa-calendar-day"></i> Сегодня
+        </a>
+        <a href="?period=yesterday" class="category-pill {% if period == 'yesterday' %}active{% endif %}">
+            <i class="fa-solid fa-calendar-minus"></i> Вчера
+        </a>
+        <a href="?period=week" class="category-pill {% if period == 'week' %}active{% endif %}">
+            <i class="fa-solid fa-calendar-week"></i> 7 дней
+        </a>
+        <a href="?period=month" class="category-pill {% if period == 'month' %}active{% endif %}">
+            <i class="fa-solid fa-calendar"></i> Этот месяц
+        </a>
+        <a href="?period=last30" class="category-pill {% if period == 'last30' %}active{% endif %}">
+            <i class="fa-solid fa-clock-rotate-left"></i> Последние 30 дней
+        </a>
+
+        <!-- Произвольный период -->
+        <form method="GET" action="" style="margin-left: auto; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+            <input type="hidden" name="period" value="custom">
+            <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;"><i class="fa-regular fa-calendar"></i> Дата:</span>
+            <input type="date" name="start_date" value="{{ start_date|date:'Y-m-d' }}"
+                   style="padding: 0.45rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.85rem; outline: none; background: #fff; color: var(--text-main);">
+            <span style="color: var(--text-muted); font-weight: bold;">—</span>
+            <input type="date" name="end_date" value="{{ end_date|date:'Y-m-d' }}"
+                   style="padding: 0.45rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.85rem; outline: none; background: #fff; color: var(--text-main);">
+            <button type="submit" class="category-pill active" style="border: none; cursor: pointer; padding: 0.45rem 0.9rem;">
+                <i class="fa-solid fa-filter"></i> Применить
+            </button>
+        </form>
+    </div>
+
+    <!-- Информация о выбранном периоде -->
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 0.65rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.88rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <i class="fa-solid fa-circle-check" style="color: var(--accent-primary);"></i>
+            <span style="font-weight: 700; color: #166534;">Выбранный период:</span>
+            <span style="color: #14532d; font-weight: 600;">{{ start_date|date:"d.m.Y" }} — {{ end_date|date:"d.m.Y" }}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.82rem; color: #15803d;">
+            <span><i class="fa-solid fa-receipt"></i> <strong>{{ total_sales_count }}</strong> чеков</span>
+            <span><i class="fa-solid fa-box"></i> <strong>{{ total_units_sold }}</strong> единиц продано</span>
+            {% if peak_hour_label != "—" %}
+            <span><i class="fa-solid fa-bolt" style="color: #eab308;"></i> Пик: <strong>{{ peak_hour_label }}</strong></span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Сетка KPI-карточек (8 штук) -->
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.85rem; margin-bottom: 1.5rem;">
+        
+        <!-- 1. Выручка -->
+        <div class="stat-card" style="border-left: 4px solid var(--accent-primary);">
+            <div class="stat-icon" style="background: #ecfdf5; color: var(--accent-primary);">
+                <i class="fa-solid fa-sack-dollar"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Выручка</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                    {{ total_revenue|floatformat:0 }} <small style="font-size: 0.85rem; font-weight: 600;">₸</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Без скидок: {{ total_subtotal|floatformat:0 }} ₸</div>
+            </div>
+        </div>
+
+        <!-- 2. Чистая прибыль -->
+        <div class="stat-card" style="border-left: 4px solid var(--accent-blue);">
+            <div class="stat-icon" style="background: #eff6ff; color: var(--accent-blue);">
+                <i class="fa-solid fa-chart-line"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Чистая прибыль</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: {% if total_profit >= 0 %}var(--accent-primary){% else %}var(--accent-rose){% endif %};">
+                    {{ total_profit|floatformat:0 }} <small style="font-size: 0.85rem; font-weight: 600;">₸</small>
+                </p>
+                <div style="font-size: 0.75rem; color: #2563eb; font-weight: 600;">
+                    Рентабельность: {{ profit_margin|floatformat:1 }}%
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Себестоимость -->
+        <div class="stat-card" style="border-left: 4px solid var(--accent-amber);">
+            <div class="stat-icon" style="background: #fffbeb; color: var(--accent-amber);">
+                <i class="fa-solid fa-money-bill-transfer"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Себестоимость</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                    {{ total_cost|floatformat:0 }} <small style="font-size: 0.85rem; font-weight: 600;">₸</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Закупочная стоимость товаров</div>
+            </div>
+        </div>
+
+        <!-- 4. Количество чеков -->
+        <div class="stat-card" style="border-left: 4px solid var(--accent-purple);">
+            <div class="stat-icon" style="background: #f5f3ff; color: var(--accent-purple);">
+                <i class="fa-solid fa-receipt"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Кол-во чеков</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                    {{ total_sales_count }} <small style="font-size: 0.85rem; font-weight: 600;">шт</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ total_units_sold }} единиц продано</div>
+            </div>
+        </div>
+
+        <!-- 5. Средний чек -->
+        <div class="stat-card" style="border-left: 4px solid #06b6d4;">
+            <div class="stat-icon" style="background: #ecfeff; color: #06b6d4;">
+                <i class="fa-solid fa-calculator"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Средний чек</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                    {{ avg_receipt|floatformat:0 }} <small style="font-size: 0.85rem; font-weight: 600;">₸</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">В среднем на одного покупателя</div>
+            </div>
+        </div>
+
+        <!-- 6. Товаров в чеке (UPT) -->
+        <div class="stat-card" style="border-left: 4px solid #14b8a6;">
+            <div class="stat-icon" style="background: #f0fdfa; color: #14b8a6;">
+                <i class="fa-solid fa-basket-shopping"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Товаров в чеке</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                    {{ avg_items_per_receipt|floatformat:1 }} <small style="font-size: 0.85rem; font-weight: 600;">шт/чек</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Размер корзины (UPT)</div>
+            </div>
+        </div>
+
+        <!-- 7. Максимальный чек -->
+        <div class="stat-card" style="border-left: 4px solid #8b5cf6;">
+            <div class="stat-icon" style="background: #f5f3ff; color: #8b5cf6;">
+                <i class="fa-solid fa-crown"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Макс. чек</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                    {{ max_receipt|floatformat:0 }} <small style="font-size: 0.85rem; font-weight: 600;">₸</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Мин. чек: {{ min_receipt|floatformat:0 }} ₸</div>
+            </div>
+        </div>
+
+        <!-- 8. Скидки -->
+        <div class="stat-card" style="border-left: 4px solid var(--accent-rose);">
+            <div class="stat-icon" style="background: #fef2f2; color: var(--accent-rose);">
+                <i class="fa-solid fa-tag"></i>
+            </div>
+            <div class="stat-info">
+                <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Предоставлено скидок</h4>
+                <p style="font-size: 1.35rem; font-weight: 800; color: var(--accent-rose);">
+                    {{ total_discount|floatformat:0 }} <small style="font-size: 0.85rem; font-weight: 600;">₸</small>
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">В {{ discount_rate|floatformat:0 }}% чеков применялась скидка</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Навигация по вкладкам аналитики -->
+    <div class="analytics-tabs-nav" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.75rem;">
+        <button type="button" class="analytics-tab-btn active" onclick="switchAnalyticsTab('overview', this)">
+            <i class="fa-solid fa-chart-line"></i> 1. Динамика продаж и оплаты
+        </button>
+        <button type="button" class="analytics-tab-btn" onclick="switchAnalyticsTab('topstock', this)">
+            <i class="fa-solid fa-fire"></i> 2. Склад и топ-продажи
+        </button>
+        <button type="button" class="analytics-tab-btn" onclick="switchAnalyticsTab('products', this)">
+            <i class="fa-solid fa-boxes-packing"></i> 3. Товары и ABC-анализ
+        </button>
+        <button type="button" class="analytics-tab-btn" onclick="switchAnalyticsTab('hourly', this)">
+            <i class="fa-solid fa-clock"></i> 4. Пиковые часы и время суток
+        </button>
+        <button type="button" class="analytics-tab-btn" onclick="switchAnalyticsTab('inventory', this)">
+            <i class="fa-solid fa-warehouse"></i> 5. Склад и залежавшиеся товары
+        </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ВКЛАДКА 2: СКЛАД И ТОП-ПРОДАЖИ             -->
+    <!-- ========================================== -->
+    <div id="tab-topstock" class="analytics-tab-content">
+
+        <!-- 2 карточки — общая сводка по складу -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+
+            <!-- Наименований на складе -->
+            <div class="stat-card" style="border-left: 4px solid var(--accent-primary); background: linear-gradient(135deg, #f0fdf4, #ecfdf5);">
+                <div class="stat-icon" style="background: #ecfdf5; color: var(--accent-primary); width: 56px; height: 56px; font-size: 1.4rem;">
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Наименований товаров</h4>
+                    <p style="font-size: 2rem; font-weight: 900; color: var(--accent-primary);">
+                        {{ total_products }}
+                        <small style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">позиций</small>
+                    </p>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">Уникальных товарных позиций в базе</div>
+                </div>
+            </div>
+
+            <!-- Единиц на складе -->
+            <div class="stat-card" style="border-left: 4px solid #06b6d4; background: linear-gradient(135deg, #ecfeff, #f0fdfa);">
+                <div class="stat-icon" style="background: #ecfeff; color: #06b6d4; width: 56px; height: 56px; font-size: 1.4rem;">
+                    <i class="fa-solid fa-cubes"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Единиц на складе (всего)</h4>
+                    <p style="font-size: 2rem; font-weight: 900; color: #06b6d4;">
+                        {{ total_stock_count }}
+                        <small style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">шт.</small>
+                    </p>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">Суммарный остаток по всем товарам</div>
+                </div>
+            </div>
+
+            <!-- Продано единиц (период) -->
+            <div class="stat-card" style="border-left: 4px solid #8b5cf6; background: linear-gradient(135deg, #faf5ff, #f5f3ff);">
+                <div class="stat-icon" style="background: #f5f3ff; color: #8b5cf6; width: 56px; height: 56px; font-size: 1.4rem;">
+                    <i class="fa-solid fa-bag-shopping"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Продано за период</h4>
+                    <p style="font-size: 2rem; font-weight: 900; color: #8b5cf6;">
+                        {{ total_units_sold }}
+                        <small style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">шт.</small>
+                    </p>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">{{ start_date|date:"d.m.Y" }} — {{ end_date|date:"d.m.Y" }}</div>
+                </div>
+            </div>
+
+            <!-- Позиций продавалось в периоде -->
+            <div class="stat-card" style="border-left: 4px solid #f59e0b; background: linear-gradient(135deg, #fffbeb, #fefce8);">
+                <div class="stat-icon" style="background: #fffbeb; color: #f59e0b; width: 56px; height: 56px; font-size: 1.4rem;">
+                    <i class="fa-solid fa-chart-simple"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Позиций продавалось</h4>
+                    <p style="font-size: 2rem; font-weight: 900; color: #f59e0b;">
+                        {{ sorted_products|length }}
+                        <small style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">из {{ total_products }}</small>
+                    </p>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">Остальные {{ zero_sale_count }} — не продавались</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Топ-10 самых продаваемых товаров (по количеству единиц) -->
+        <div class="table-container" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.6rem;">
+                <i class="fa-solid fa-fire" style="color: #ef4444;"></i>
+                Топ-10 самых продаваемых товаров
+                <span style="font-size: 0.8rem; background: #fef2f2; color: #ef4444; padding: 3px 8px; border-radius: 8px; font-weight: 600; margin-left: 0.3rem;">По количеству единиц</span>
+            </h3>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                {{ start_date|date:"d.m.Y" }} — {{ end_date|date:"d.m.Y" }} · Показано максимальное количество проданных единиц
+            </p>
+
+            {% if top_by_qty %}
+            {% with max_qty=top_by_qty.0.total_qty %}
+            <div style="display: flex; flex-direction: column; gap: 0.7rem;">
+                {% for p in top_by_qty %}
+                <div style="display: flex; align-items: center; gap: 0.85rem;">
+                    <!-- Ранг -->
+                    <div style="min-width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem;
+                        background: {% if forloop.counter == 1 %}#fef3c7; color: #d97706{% elif forloop.counter == 2 %}#f1f5f9; color: #64748b{% elif forloop.counter == 3 %}#fff7ed; color: #ea580c{% else %}#f8fafc; color: #94a3b8{% endif %};">
+                        {{ forloop.counter }}
+                    </div>
+
+                    <!-- Информация -->
+                    <div style="min-width: 200px; flex-shrink: 0;">
+                        <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-main); line-height: 1.2;">{{ p.product_name }}</div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">{{ p.category_name }}</div>
+                    </div>
+
+                    <!-- Прогресс-бар -->
+                    <div style="flex: 1; position: relative;">
+                        <div style="background: #f1f5f9; border-radius: 8px; height: 22px; overflow: hidden; position: relative;">
+                            <div style="height: 100%; border-radius: 8px; background: linear-gradient(90deg,
+                                {% if forloop.counter <= 3 %}#059669, #10b981{% else %}#2563eb, #3b82f6{% endif %});
+                                width: {% widthratio p.total_qty max_qty 100 %}%;
+                                transition: width 0.6s ease;
+                                display: flex; align-items: center; padding-left: 8px;">
+                            </div>
+                            <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-weight: 700; font-size: 0.78rem; color: var(--text-main);">
+                                {{ p.total_qty }} {{ p.unit }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Выручка -->
+                    <div style="min-width: 110px; text-align: right; flex-shrink: 0;">
+                        <div style="font-weight: 700; font-size: 0.88rem; color: var(--accent-primary);">{{ p.total_revenue|floatformat:0 }} ₸</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">Маржа: {{ p.margin_pct|floatformat:0 }}%</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endwith %}
+            {% else %}
+            <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                <i class="fa-solid fa-inbox" style="font-size: 2.5rem; opacity: 0.3; display: block; margin-bottom: 0.75rem;"></i>
+                За выбранный период продаж не было
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Два графика: распределение склада и топ-продажи по кол-ву -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem;">
+
+            <!-- Распределение запасов по категориям -->
+            <div class="table-container" style="padding: 1.5rem;">
+                <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-boxes-stacked" style="color: var(--accent-amber);"></i> Остатки на складе по категориям
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Сколько единиц товара хранится в каждой категории</p>
+                <div style="position: relative; height: 230px; width: 100%; margin-bottom: 1rem;">
+                    <canvas id="stockCatChart"></canvas>
+                </div>
+                <!-- Список категорий -->
+                <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem;">
+                    {% for cat in stock_by_category_list %}
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="width: 10px; height: 10px; border-radius: 50%; background: {{ cat.color }}; flex-shrink: 0;"></span>
+                            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">{{ cat.name }}</span>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">({{ cat.count }} наим.)</span>
+                        </div>
+                        <strong style="font-size: 0.88rem; color: var(--text-main);">{{ cat.stock }} шт.</strong>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Топ продаж по кол-ву — горизонтальный Bar Chart -->
+            <div class="table-container" style="padding: 1.5rem;">
+                <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-ranking-star" style="color: #ef4444;"></i> Рейтинг продаж (ед. за период)
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Топ-10 товаров по количеству проданных единиц</p>
+                <div style="position: relative; height: 310px; width: 100%;">
+                    <canvas id="topQtyChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ВКЛАДКА 1: ОБЗОР И ГРАФИКИ                 -->
+    <!-- ========================================== -->
+    <div id="tab-overview" class="analytics-tab-content active">
+        
+        <!-- Большой трендовый линейный график -->
+        <div class="table-container" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-chart-area" style="color: var(--accent-primary);"></i>
+                        Динамика выручки и чистой прибыли
+                    </h3>
+                    <p style="font-size: 0.82rem; color: var(--text-muted);">
+                        {% if period == 'today' or period == 'yesterday' %}
+                            Почасовые показатели продаж за день
+                        {% else %}
+                            Движение продаж и прибыли по дням
+                        {% endif %}
+                    </p>
+                </div>
+                <div style="display: flex; gap: 1rem; font-size: 0.85rem; font-weight: 600;">
+                    <span style="display: flex; align-items: center; gap: 0.35rem; color: #059669;">
+                        <span style="width: 12px; height: 12px; border-radius: 3px; background: #059669; display: inline-block;"></span> Выручка (₸)
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 0.35rem; color: #2563eb;">
+                        <span style="width: 12px; height: 12px; border-radius: 3px; background: #2563eb; display: inline-block;"></span> Чистая прибыль (₸)
+                    </span>
+                </div>
+            </div>
+            <div style="position: relative; height: 320px; width: 100%;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Два круговых графика -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem;">
+
+            <!-- Способы оплаты -->
+            <div class="table-container" style="padding: 1.5rem;">
+                <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-wallet" style="color: var(--accent-primary);"></i> Распределение по способам оплаты
+                </h3>
+
+                <!-- Прогресс-бары -->
+                <div style="display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 1.5rem;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 0.3rem;">
+                            <span style="font-weight: 600; color: #b45309;"><i class="fa-solid fa-money-bill-wave"></i> Наличные ({{ cash_count }} чеков)</span>
+                            <strong>{{ cash_total|floatformat:0 }} ₸</strong>
+                        </div>
+                        <div class="mini-bar">
+                            <div class="mini-bar-fill" style="background: #f59e0b; width: {% if total_revenue > 0 %}{% widthratio cash_total total_revenue 100 %}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 0.3rem;">
+                            <span style="font-weight: 600; color: #2563eb;"><i class="fa-solid fa-credit-card"></i> Банковская карта ({{ card_count }} чеков)</span>
+                            <strong>{{ card_total|floatformat:0 }} ₸</strong>
+                        </div>
+                        <div class="mini-bar">
+                            <div class="mini-bar-fill" style="background: #3b82f6; width: {% if total_revenue > 0 %}{% widthratio card_total total_revenue 100 %}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 0.3rem;">
+                            <span style="font-weight: 600; color: #7c3aed;"><i class="fa-solid fa-qrcode"></i> Kaspi / QR ({{ click_count }} чеков)</span>
+                            <strong>{{ click_total|floatformat:0 }} ₸</strong>
+                        </div>
+                        <div class="mini-bar">
+                            <div class="mini-bar-fill" style="background: #8b5cf6; width: {% if total_revenue > 0 %}{% widthratio click_total total_revenue 100 %}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="position: relative; height: 210px; width: 100%;">
+                    <canvas id="paymentChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Доля по категориям -->
+            <div class="table-container" style="padding: 1.5rem;">
+                <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-tags" style="color: var(--accent-blue);"></i> Доля выручки по категориям
+                </h3>
+
+                <div style="position: relative; height: 210px; width: 100%; margin-bottom: 1rem;">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+
+                <!-- Теги категорий -->
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center;">
+                    {% for cat in category_stats|slice:":6" %}
+                    <span style="font-size: 0.78rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ cat.color }};"></span>
+                        <strong>{{ cat.name }}</strong>: {{ cat.share_pct|floatformat:1 }}%
+                    </span>
+                    {% empty %}
+                    <span style="font-size: 0.85rem; color: var(--text-muted);">Нет данных</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ВКЛАДКА 2: ТОВАРЫ И ABC-АНАЛИЗ             -->
+    <!-- ========================================== -->
+    <div id="tab-products" class="analytics-tab-content">
+        
+        <!-- ABC Пояснительные карточки -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 14px; padding: 1.1rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                    <span class="abc-badge abc-a">A</span>
+                    <strong style="color: #15803d; font-size: 1.2rem;">{{ abc_counts.A }} товаров</strong>
+                </div>
+                <h4 style="font-size: 0.92rem; font-weight: 700; color: #166534;">Товары-локомотивы (80% выручки)</h4>
+                <p style="font-size: 0.8rem; color: #15803d; margin-top: 0.2rem;">
+                    Наиболее важные товары, обеспечивающие основной доход магазина. Их отсутствие на складе недопустимо!
+                </p>
+            </div>
+
+            <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 14px; padding: 1.1rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                    <span class="abc-badge abc-b">B</span>
+                    <strong style="color: #a16207; font-size: 1.2rem;">{{ abc_counts.B }} товаров</strong>
+                </div>
+                <h4 style="font-size: 0.92rem; font-weight: 700; color: #854d0e;">Стабильные товары (15% выручки)</h4>
+                <p style="font-size: 0.8rem; color: #a16207; margin-top: 0.2rem;">
+                    Товары со средним оборотом и стабильным спросом. Поддерживается стандартный запас.
+                </p>
+            </div>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1.1rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                    <span class="abc-badge abc-c">C</span>
+                    <strong style="color: #475569; font-size: 1.2rem;">{{ abc_counts.C }} товаров</strong>
+                </div>
+                <h4 style="font-size: 0.92rem; font-weight: 700; color: #334155;">Низкий оборот (5% выручки)</h4>
+                <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.2rem;">
+                    Товары с низкими продажами. Рекомендуется не замораживать в них излишние средства и пересмотреть ассортимент.
+                </p>
+            </div>
+        </div>
+
+        <!-- Топ-5 по чистой прибыли -->
+        <div style="margin-bottom: 1.5rem;">
+            <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-trophy" style="color: #eab308;"></i> Топ-5 товаров по ЧИСТОЙ ПРИБЫЛИ
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.85rem;">
+                {% for p in top_profit_products|slice:":5" %}
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem 1.1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span style="font-size: 0.75rem; background: #eff6ff; color: #2563eb; padding: 2px 7px; border-radius: 6px; font-weight: 600;">{{ p.category_name }}</span>
+                        <span class="abc-badge {{ p.abc_class }}">{{ p.abc_group }}</span>
+                    </div>
+                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin-bottom: 0.5rem; line-height: 1.3;">
+                        {{ p.product_name }}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; border-top: 1px dashed #e2e8f0; padding-top: 0.4rem;">
+                        <span style="color: var(--text-muted);">Чистая прибыль:</span>
+                        <strong style="color: var(--accent-primary);">{{ p.total_profit|floatformat:0 }} ₸</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        <span>Продано: {{ p.total_qty }} {{ p.unit }}</span>
+                        <span style="color: #2563eb; font-weight: 600;">Маржа: {{ p.margin_pct|floatformat:0 }}%</span>
+                    </div>
+                </div>
+                {% empty %}
+                <div style="grid-column: 1 / -1; padding: 2rem; text-align: center; color: var(--text-muted);">
+                    За выбранный период продаж не было
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Полная таблица эффективности товаров с ABC -->
+        <div class="table-container">
+            <div style="padding: 1.25rem 1.25rem 0.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-list-check" style="color: var(--accent-primary);"></i>
+                    <h3 style="font-size: 1.05rem; font-weight: 700;">Эффективность всех товаров и ABC-классификация</h3>
+                </div>
+                <div style="font-size: 0.82rem; color: var(--text-muted);">
+                    Всего проданных позиций: <strong>{{ sorted_products|length }}</strong>
+                </div>
+            </div>
+
+            <table class="custom-table" id="productsReportTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th>Название товара</th>
+                        <th>Категория</th>
+                        <th style="text-align: right;">Продано</th>
+                        <th style="text-align: right;">Выручка (₸)</th>
+                        <th style="text-align: right;">Себестоимость (₸)</th>
+                        <th style="text-align: right;">Чистая прибыль (₸)</th>
+                        <th style="text-align: right;">Маржа (%)</th>
+                        <th style="text-align: right;">Доля (%)</th>
+                        <th style="text-align: center; width: 80px;">ABC</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in sorted_products %}
+                    <tr>
+                        <td style="color: var(--text-muted); font-weight: 600;">{{ forloop.counter }}</td>
+                        <td>
+                            <strong>{{ p.product_name }}</strong>
+                            <div style="font-size: 0.72rem; color: var(--text-muted);">На складе: {{ p.stock }} {{ p.unit }}</div>
+                        </td>
+                        <td>
+                            <span style="background: rgba(59, 130, 246, 0.08); color: #2563eb; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 500;">
+                                {{ p.category_name }}
+                            </span>
+                        </td>
+                        <td style="text-align: right; font-weight: 600;">
+                            {{ p.total_qty }} {{ p.unit }}
+                        </td>
+                        <td style="text-align: right; font-weight: 700; color: var(--text-main);">
+                            {{ p.total_revenue|floatformat:0 }} ₸
+                        </td>
+                        <td style="text-align: right; color: var(--text-muted);">
+                            {{ p.total_cost|floatformat:0 }} ₸
+                        </td>
+                        <td style="text-align: right; font-weight: 700; color: {% if p.total_profit >= 0 %}var(--accent-primary){% else %}var(--accent-rose){% endif %};">
+                            {{ p.total_profit|floatformat:0 }} ₸
+                        </td>
+                        <td style="text-align: right; font-weight: 600; color: #2563eb;">
+                            {{ p.margin_pct|floatformat:1 }}%
+                        </td>
+                        <td style="text-align: right; color: var(--text-muted);">
+                            {{ p.share_pct|floatformat:1 }}%
+                        </td>
+                        <td style="text-align: center;">
+                            <span class="abc-badge {{ p.abc_class }}" title="{{ p.abc_desc }}">
+                                {{ p.abc_group }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                            <i class="fa-solid fa-inbox" style="font-size: 2rem; opacity: 0.3; margin-bottom: 0.5rem; display: block;"></i>
+                            За выбранный период продаж не было
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ВКЛАДКА 3: ПИКОВЫЕ ЧАСЫ И ВРЕМЯ СУТОК     -->
+    <!-- ========================================== -->
+    <div id="tab-hourly" class="analytics-tab-content">
+        
+        <!-- Карточка пикового часа -->
+        <div style="background: linear-gradient(135deg, #059669, #0d9488); border-radius: 16px; padding: 1.5rem; color: #ffffff; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <span style="background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">
+                    <i class="fa-solid fa-fire"></i> Самое активное время продаж
+                </span>
+                <h3 style="font-size: 1.8rem; font-weight: 800; margin: 0.4rem 0 0.2rem;">
+                    {{ peak_hour_label }}
+                </h3>
+                <p style="opacity: 0.9; font-size: 0.9rem;">
+                    Выручка в этот период: <strong>{{ peak_hour_revenue|floatformat:0 }} ₸</strong> ({{ peak_hour_count }} покупателей)
+                </p>
+            </div>
+            <div style="background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border-radius: 14px; padding: 1rem 1.25rem; font-size: 0.85rem; max-width: 380px;">
+                <div style="font-weight: 700; margin-bottom: 0.2rem;"><i class="fa-solid fa-lightbulb"></i> Рекомендация руководителю:</div>
+                В пиковые часы, чтобы не образовывались очереди, рекомендуется привлечь второго кассира или подготовить его заранее.
+            </div>
+        </div>
+
+        <!-- 4 карточки времени суток -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            
+            <!-- Утро -->
+            <div class="daypart-card" style="border-top: 4px solid #f59e0b;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main);"><i class="fa-solid fa-sun" style="color: #f59e0b;"></i> {{ dayparts.morning.label }}</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">{{ dayparts.morning.count }} чеков</span>
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                    {{ dayparts.morning.revenue|floatformat:0 }} ₸
+                </div>
+                <div class="mini-bar">
+                    <div class="mini-bar-fill" style="background: #f59e0b; width: {{ dayparts.morning.share_pct }}%;"></div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">Доля: {{ dayparts.morning.share_pct|floatformat:1 }}%</div>
+            </div>
+
+            <!-- День -->
+            <div class="daypart-card" style="border-top: 4px solid #06b6d4;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main);"><i class="fa-solid fa-cloud-sun" style="color: #06b6d4;"></i> {{ dayparts.afternoon.label }}</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">{{ dayparts.afternoon.count }} чеков</span>
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                    {{ dayparts.afternoon.revenue|floatformat:0 }} ₸
+                </div>
+                <div class="mini-bar">
+                    <div class="mini-bar-fill" style="background: #06b6d4; width: {{ dayparts.afternoon.share_pct }}%;"></div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">Доля: {{ dayparts.afternoon.share_pct|floatformat:1 }}%</div>
+            </div>
+
+            <!-- Вечер -->
+            <div class="daypart-card" style="border-top: 4px solid #8b5cf6;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main);"><i class="fa-solid fa-moon" style="color: #8b5cf6;"></i> {{ dayparts.evening.label }}</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">{{ dayparts.evening.count }} чеков</span>
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                    {{ dayparts.evening.revenue|floatformat:0 }} ₸
+                </div>
+                <div class="mini-bar">
+                    <div class="mini-bar-fill" style="background: #8b5cf6; width: {{ dayparts.evening.share_pct }}%;"></div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">Доля: {{ dayparts.evening.share_pct|floatformat:1 }}%</div>
+            </div>
+
+            <!-- Ночь -->
+            <div class="daypart-card" style="border-top: 4px solid #64748b;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main);"><i class="fa-solid fa-star-and-crescent" style="color: #64748b;"></i> {{ dayparts.night.label }}</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">{{ dayparts.night.count }} чеков</span>
+                </div>
+                <div style="font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                    {{ dayparts.night.revenue|floatformat:0 }} ₸
+                </div>
+                <div class="mini-bar">
+                    <div class="mini-bar-fill" style="background: #64748b; width: {{ dayparts.night.share_pct }}%;"></div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">Доля: {{ dayparts.night.share_pct|floatformat:1 }}%</div>
+            </div>
+
+        </div>
+
+        <!-- Почасовой столбчатый график -->
+        <div class="table-container" style="padding: 1.5rem;">
+            <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-chart-column" style="color: var(--accent-primary);"></i>
+                Почасовой объём продаж с 08:00 до 22:00 (₸)
+            </h3>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Анализ покупательской активности по часам
+            </p>
+            <div style="position: relative; height: 300px; width: 100%;">
+                <canvas id="hourlyChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ВКЛАДКА 4: СКЛАД И ЗАЛЕЖАВШИЕСЯ ТОВАРЫ    -->
+    <!-- ========================================== -->
+    <div id="tab-inventory" class="analytics-tab-content">
+        
+        <!-- Карточки стоимости склада -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            
+            <div class="stat-card" style="border-left: 4px solid var(--accent-amber);">
+                <div class="stat-icon" style="background: #fffbeb; color: var(--accent-amber);">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Склад по себестоимости</h4>
+                    <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                        {{ total_stock_value_cost|floatformat:0 }} <small style="font-size: 0.85rem;">₸</small>
+                    </p>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Заморожено в товарных запасах</div>
+                </div>
+            </div>
+
+            <div class="stat-card" style="border-left: 4px solid var(--accent-blue);">
+                <div class="stat-icon" style="background: #eff6ff; color: var(--accent-blue);">
+                    <i class="fa-solid fa-tags"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Склад по ценам продажи</h4>
+                    <p style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+                        {{ total_stock_value_price|floatformat:0 }} <small style="font-size: 0.85rem;">₸</small>
+                    </p>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Ожидаемая выручка при полной реализации</div>
+                </div>
+            </div>
+
+            <div class="stat-card" style="border-left: 4px solid var(--accent-primary);">
+                <div class="stat-icon" style="background: #ecfdf5; color: var(--accent-primary);">
+                    <i class="fa-solid fa-hand-holding-dollar"></i>
+                </div>
+                <div class="stat-info">
+                    <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Потенциальная прибыль</h4>
+                    <p style="font-size: 1.35rem; font-weight: 800; color: var(--accent-primary);">
+                        {{ potential_stock_profit|floatformat:0 }} <small style="font-size: 0.85rem;">₸</small>
+                    </p>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Чистая прибыль от товаров на складе</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Товары с низким остатком (≤ 10 шт) -->
+        <div class="table-container" style="border-left: 4px solid var(--accent-amber); margin-bottom: 1.5rem;">
+            <div style="padding: 1.25rem 1.25rem 0.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-amber);"></i>
+                    <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--accent-amber);">
+                        Товары с низким остатком (Запас ≤ 10 шт)
+                    </h3>
+                </div>
+                <a href="{% url 'products_list' %}" class="category-pill" style="font-size: 0.8rem; padding: 4px 10px; background: #fffbeb; border: 1px solid #fde68a; color: #b45309;">
+                    <i class="fa-solid fa-plus"></i> Оприходовать
+                </a>
+            </div>
+
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th>Название товара</th>
+                        <th>Категория</th>
+                        <th>Остаток на складе</th>
+                        <th style="text-align: right;">Цена продажи</th>
+                        <th style="text-align: right;">Себестоимость</th>
+                        <th style="text-align: center;">Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in low_stock_products %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td><strong>{{ p.name }}</strong></td>
+                        <td>
+                            <span style="background: rgba(59, 130, 246, 0.08); color: #2563eb; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem;">
+                                {{ p.category.name|default:"Без категории" }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="stock-badge low" style="font-weight: 700;">
+                                <i class="fa-solid fa-triangle-exclamation"></i> {{ p.stock }} {{ p.get_unit_display }}
+                            </span>
+                        </td>
+                        <td style="text-align: right;"><strong>{{ p.price|floatformat:0 }} ₸</strong></td>
+                        <td style="text-align: right; color: var(--text-muted);">{{ p.cost_price|floatformat:0 }} ₸</td>
+                        <td style="text-align: center;">
+                            <span style="background: #fee2e2; color: #ef4444; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">
+                                Нужен заказ
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 1.5rem; color: var(--accent-primary); font-weight: 600;">
+                            <i class="fa-solid fa-circle-check"></i> Все товары в достаточном количестве! (более 10 шт)
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Залежавшиеся товары (нулевые продажи за период) -->
+        <div class="table-container" style="border-left: 4px solid #64748b;">
+            <div style="padding: 1.25rem 1.25rem 0.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <h3 style="font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-bed" style="color: #64748b;"></i> Залежавшиеся товары (0 продаж за период)
+                    </h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        Товары, которые есть на складе, но не продавались в выбранном периоде (Замороженные средства: <strong>{{ zero_sale_tied_capital|floatformat:0 }} ₸</strong>)
+                    </p>
+                </div>
+                <span style="font-size: 0.8rem; background: #f1f5f9; padding: 4px 10px; border-radius: 8px; font-weight: 600; color: #475569;">
+                    {{ zero_sale_count }} позиций
+                </span>
+            </div>
+
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th>Название товара</th>
+                        <th>Категория</th>
+                        <th>Остаток на складе</th>
+                        <th style="text-align: right;">Себестоимость</th>
+                        <th style="text-align: right;">Замороженные средства (₸)</th>
+                        <th style="text-align: center;">Рекомендация</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in zero_sale_products %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td><strong>{{ p.name }}</strong></td>
+                        <td>
+                            <span style="background: rgba(59, 130, 246, 0.08); color: #2563eb; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem;">
+                                {{ p.category.name|default:"Без категории" }}
+                            </span>
+                        </td>
+                        <td>
+                            <span style="font-weight: 600;">{{ p.stock }} {{ p.get_unit_display }}</span>
+                        </td>
+                        <td style="text-align: right; color: var(--text-muted);">{{ p.cost_price|floatformat:0 }} ₸</td>
+                        <td style="text-align: right; font-weight: 700; color: #b45309;">
+                            {% widthratio p.stock 1 p.cost_price %} ₸
+                        </td>
+                        <td style="text-align: center;">
+                            <span style="background: #f1f5f9; color: #64748b; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">
+                                Акция / Скидка
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 1.5rem; color: var(--accent-primary); font-weight: 600;">
+                            <i class="fa-solid fa-circle-check"></i> Отлично! Все товары продавались в этом периоде.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Данные из бэкенда в формате JSON
+    const analyticsData = {{ chart_data_json|safe }};
+
+    // Переключение вкладок
+    function switchAnalyticsTab(tabName, btnElem) {
+        document.querySelectorAll('.analytics-tab-btn').forEach(b => b.classList.remove('active'));
+        if (btnElem) btnElem.classList.add('active');
+
+        document.querySelectorAll('.analytics-tab-content').forEach(c => c.classList.remove('active'));
+        const targetContent = document.getElementById('tab-' + tabName);
+        if (targetContent) targetContent.classList.add('active');
+
+        window.dispatchEvent(new Event('resize'));
+    }
+
+    // Инициализация всех графиков
+    document.addEventListener('DOMContentLoaded', function() {
+        initTrendChart();
+        initPaymentChart();
+        initCategoryChart();
+        initHourlyChart();
+        initStockCatChart();
+        initTopQtyChart();
+    });
+
+    // 1. График тренда (Выручка и Прибыль)
+    let trendChartInstance = null;
+    function initTrendChart() {
+        const ctx = document.getElementById('trendChart');
+        if (!ctx) return;
+
+        const trend = analyticsData.trend || {};
+        const labels = trend.labels || [];
+        const revenues = trend.revenues || [];
+        const profits = trend.profits || [];
+
+        trendChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Выручка (₸)',
+                        data: revenues,
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#059669',
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    },
+                    {
+                        label: 'Чистая прибыль (₸)',
+                        data: profits,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointBackgroundColor: '#2563eb',
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        padding: 10,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + new Intl.NumberFormat('ru-RU').format(context.raw) + ' ₸';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#f1f5f9' },
+                        ticks: {
+                            callback: function(val) {
+                                return new Intl.NumberFormat('ru-RU', { notation: "compact" }).format(val) + ' ₸';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. Круговой график способов оплаты
+    let paymentChartInstance = null;
+    function initPaymentChart() {
+        const ctx = document.getElementById('paymentChart');
+        if (!ctx) return;
+
+        const payment = analyticsData.payment || {};
+        const sum = (payment.data || []).reduce((a, b) => a + b, 0);
+
+        paymentChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: payment.labels || ['Наличные', 'Карта', 'Kaspi/QR'],
+                datasets: [{
+                    data: sum > 0 ? payment.data : [1],
+                    backgroundColor: sum > 0 ? payment.colors : ['#e2e8f0'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, font: { size: 11 } }
+                    },
+                    tooltip: {
+                        enabled: sum > 0,
+                        callbacks: {
+                            label: function(context) {
+                                const val = context.raw;
+                                const pct = Math.round((val / sum) * 100);
+                                return `${context.label}: ${new Intl.NumberFormat('ru-RU').format(val)} ₸ (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Круговой график по категориям
+    let categoryChartInstance = null;
+    function initCategoryChart() {
+        const ctx = document.getElementById('categoryChart');
+        if (!ctx) return;
+
+        const cats = analyticsData.categories || {};
+        const sum = (cats.revenues || []).reduce((a, b) => a + b, 0);
+
+        categoryChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: cats.labels || [],
+                datasets: [{
+                    data: sum > 0 ? cats.revenues : [1],
+                    backgroundColor: sum > 0 ? cats.colors : ['#e2e8f0'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        enabled: sum > 0,
+                        callbacks: {
+                            label: function(context) {
+                                const val = context.raw;
+                                const pct = sum > 0 ? Math.round((val / sum) * 100) : 0;
+                                return `${context.label}: ${new Intl.NumberFormat('ru-RU').format(val)} ₸ (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 4. Почасовой столбчатый график
+    let hourlyChartInstance = null;
+    function initHourlyChart() {
+        const ctx = document.getElementById('hourlyChart');
+        if (!ctx) return;
+
+        const hourly = analyticsData.hourly || {};
+
+        hourlyChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: hourly.labels || [],
+                datasets: [{
+                    label: 'Почасовая выручка (₸)',
+                    data: hourly.data || [],
+                    backgroundColor: 'rgba(5, 150, 105, 0.8)',
+                    hoverBackgroundColor: '#059669',
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const cnt = (hourly.counts && hourly.counts[context.dataIndex]) || 0;
+                                return `${new Intl.NumberFormat('ru-RU').format(context.raw)} ₸ (${cnt} чеков)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 10 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#f1f5f9' },
+                        ticks: {
+                            callback: function(val) {
+                                return new Intl.NumberFormat('ru-RU', { notation: "compact" }).format(val) + ' ₸';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 5. Круговая диаграмма: запасы по категориям
+    let stockCatChartInstance = null;
+    function initStockCatChart() {
+        const ctx = document.getElementById('stockCatChart');
+        if (!ctx) return;
+        const sc = analyticsData.stock_category || {};
+        const total = (sc.data || []).reduce((a, b) => a + b, 0);
+        stockCatChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: sc.labels || [],
+                datasets: [{
+                    data: total > 0 ? sc.data : [1],
+                    backgroundColor: total > 0 ? sc.colors : ['#e2e8f0'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        enabled: total > 0,
+                        callbacks: {
+                            label: function(context) {
+                                const val = context.raw;
+                                const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                                return `${context.label}: ${val} шт. (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 6. Горизонтальный Bar: топ продаж по количеству
+    let topQtyChartInstance = null;
+    function initTopQtyChart() {
+        const ctx = document.getElementById('topQtyChart');
+        if (!ctx) return;
+        const tq = analyticsData.top_qty || {};
+        topQtyChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: tq.labels || [],
+                datasets: [{
+                    label: 'Продано единиц',
+                    data: tq.data || [],
+                    backgroundColor: tq.colors || ['#059669'],
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Продано: ${context.raw} шт.`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: '#f1f5f9' },
+                        ticks: { font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11 }, color: '#374151' }
+                    }
+                }
+            }
+        });
+    }
+
+    // Экспорт отчёта и таблицы товаров в CSV (с UTF-8 BOM для Excel)
+    function exportReportCSV() {
+        let csvContent = "\uFEFF"; // UTF-8 BOM
+
+        // Заголовок отчёта
+        csvContent += "POS КАССА - БИЗНЕС-АНАЛИТИКА И ОТЧЁТ\n";
+        csvContent += `Период;${ "{{ start_date|date:'d.m.Y' }}" } - ${ "{{ end_date|date:'d.m.Y' }}" }\n`;
+        csvContent += `Дата формирования;${ new Date().toLocaleString('ru-RU') }\n\n`;
+
+        // Основные KPI
+        csvContent += "ОСНОВНЫЕ ПОКАЗАТЕЛИ\n";
+        csvContent += `Выручка (₸);${ "{{ total_revenue|floatformat:0 }}" }\n`;
+        csvContent += `Чистая прибыль (₸);${ "{{ total_profit|floatformat:0 }}" }\n`;
+        csvContent += `Рентабельность (%);${ "{{ profit_margin|floatformat:1 }}" }%\n`;
+        csvContent += `Себестоимость (₸);${ "{{ total_cost|floatformat:0 }}" }\n`;
+        csvContent += `Количество чеков;${ "{{ total_sales_count }}" }\n`;
+        csvContent += `Средний чек (₸);${ "{{ avg_receipt|floatformat:0 }}" }\n`;
+        csvContent += `Продано единиц;${ "{{ total_units_sold }}" }\n`;
+        csvContent += `Скидки (₸);${ "{{ total_discount|floatformat:0 }}" }\n\n`;
+
+        // Таблица товаров
+        csvContent += "#;Название товара;Категория;Продано;Выручка (₸);Себестоимость (₸);Чистая прибыль (₸);Маржа (%);Доля (%);ABC-группа\n";
+
+        const table = document.getElementById('productsReportTable');
+        if (table) {
+            const rows = table.querySelectorAll('tbody tr');
+            let idx = 1;
+            rows.forEach(r => {
+                const cols = r.querySelectorAll('td');
+                if (cols.length >= 10) {
+                    const name = cols[1].querySelector('strong') ? cols[1].querySelector('strong').innerText.trim() : '';
+                    const cat = cols[2].innerText.trim();
+                    const qty = cols[3].innerText.trim();
+                    const rev = cols[4].innerText.replace('₸', '').trim();
+                    const cost = cols[5].innerText.replace('₸', '').trim();
+                    const profit = cols[6].innerText.replace('₸', '').trim();
+                    const margin = cols[7].innerText.trim();
+                    const share = cols[8].innerText.trim();
+                    const abc = cols[9].innerText.trim();
+
+                    csvContent += `${idx};"${name}";"${cat}";"${qty}";${rev};${cost};${profit};${margin};${share};${abc}\n`;
+                    idx++;
+                }
+            });
+        }
+
+        // Скачивание файла
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kassa_analitika_${ "{{ period }}" }_${ "{{ start_date|date:'Y-m-d' }}" }.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+</script>
+{% endblock %}

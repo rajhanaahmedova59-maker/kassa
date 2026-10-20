@@ -1,0 +1,82 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}POS Кассовая Система{% endblock %}</title>
+
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="sidebar-logo" title="POS Кассовая Система">
+            <i class="fa-solid fa-cash-register"></i>
+        </div>
+        <nav class="nav-menu">
+            <a href="{% url 'pos_terminal' %}" class="nav-item {% if request.resolver_match.url_name == 'pos_terminal' %}active{% endif %}" title="Кассовый Терминал">
+                <i class="fa-solid fa-store"></i>
+                <span>Касса</span>
+            </a>
+            <a href="{% url 'products_list' %}" class="nav-item {% if request.resolver_match.url_name == 'products_list' %}active{% endif %}" title="Склад товаров">
+                <i class="fa-solid fa-boxes-stacked"></i>
+                <span>Склад</span>
+            </a>
+            <a href="{% url 'sales_history' %}" class="nav-item {% if request.resolver_match.url_name == 'sales_history' %}active{% endif %}" title="История продаж">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>История</span>
+            </a>
+            <a href="{% url 'report' %}" class="nav-item {% if request.resolver_match.url_name == 'report' %}active{% endif %}" title="Отчёт и аналитика">
+                <i class="fa-solid fa-file-invoice-dollar"></i>
+                <span>Отчёт</span>
+            </a>
+            <a href="{% url 'cashier_list' %}" class="nav-item {% if request.resolver_match.url_name == 'cashier_list' %}active{% endif %}" title="Кассиры">
+                <i class="fa-solid fa-users"></i>
+                <span>Кассиры</span>
+            </a>
+            <a href="/admin/" target="_blank" class="nav-item" title="Django Админ панель">
+                <i class="fa-solid fa-user-shield"></i>
+                <span>Админ</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- App Container -->
+    <main class="app-container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+            const color = type === 'success' ? '#10b981' : '#f43f5e';
+            toast.innerHTML = `<i class="fa-solid ${icon}" style="color: ${color}"></i> <span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

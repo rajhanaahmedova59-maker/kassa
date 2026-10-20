@@ -1,0 +1,403 @@
+{% extends 'base.html' %}
+
+{% block title %}Склад и Приход товаров | POS Система{% endblock %}
+
+{% block content %}
+<div class="main-content" style="max-width: 1200px; margin: 0 auto; width: 100%; overflow-y: auto; height: 100vh; padding-bottom: 3rem;">
+    <!-- Top Header -->
+    <div class="top-header" style="margin-bottom: 1rem; flex-wrap: wrap;">
+        <div>
+            <h2><i class="fa-solid fa-boxes-stacked" style="color: var(--accent-primary)"></i> Управление Складом и Приход Товаров</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Остатки товаров, оформление приходов (устига товар қўшиш) и история поступлений</p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button class="checkout-btn" style="width: auto; padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #10b981, #059669);" onclick="openSupplyModal()">
+                <i class="fa-solid fa-truck-ramp-box"></i> + Оформить Приход
+            </button>
+            <button class="checkout-btn" style="width: auto; padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #3b82f6, #2563eb);" onclick="openAddProductModal()">
+                <i class="fa-solid fa-plus"></i> Новый товар
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Summary Cards -->
+    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1.25rem;">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #eff6ff; color: #3b82f6; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-solid fa-box"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Всего товаров</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">{{ total_products_count }} <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">поз.</span></div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #ecfdf5; color: #10b981; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-solid fa-cubes"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Общий остаток (Штук/Кг)</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #10b981;">{{ total_stock_count }} <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">ед.</span></div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #fef3c7; color: #d97706; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-solid fa-truck-moving"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Всего приходов</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #d97706;">{{ total_supplies_count }} <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">партий</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div style="display: flex; gap: 0.75rem; border-bottom: 2px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1.25rem;">
+        <button id="tab-products-btn" class="category-pill active" onclick="switchTab('products')">
+            <i class="fa-solid fa-boxes-stacked"></i> Товары и Остатки (Нечта штук қолди)
+        </button>
+        <button id="tab-supplies-btn" class="category-pill" onclick="switchTab('supplies')">
+            <i class="fa-solid fa-truck-ramp-box"></i> История Приходов (Товар қанча келди)
+        </button>
+    </div>
+
+    <!-- TAB 1: Products Table -->
+    <div id="view-products" class="tab-content-view">
+        <div class="table-container">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Название товара</th>
+                        <th>Штрих-код</th>
+                        <th>Категория</th>
+                        <th>Цена продажи</th>
+                        <th>Себестоимость</th>
+                        <th>Остаток (Нечта колди)</th>
+                        <th style="text-align: center;">Приход (Добавить)</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div class="product-icon-container" style="width: 36px; height: 36px; font-size: 1rem; margin-bottom: 0;">
+                                    <i class="fa-solid {{ p.icon }}"></i>
+                                </div>
+                                <strong>{{ p.name }}</strong>
+                            </div>
+                        </td>
+                        <td><code>{{ p.barcode|default:"---" }}</code></td>
+                        <td>
+                            {% if p.category %}
+                                <span style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem;">
+                                    {{ p.category.name }}
+                                </span>
+                            {% else %}
+                                <span style="color: var(--text-muted);">---</span>
+                            {% endif %}
+                        </td>
+                        <td><strong style="color: var(--accent-primary);">{{ p.price|floatformat:0 }} ₸</strong></td>
+                        <td><span style="color: var(--text-muted);">{{ p.cost_price|floatformat:0 }} ₸</span></td>
+                        <td>
+                            {% if p.stock > 10 %}
+                                <span class="stock-badge ok" style="font-size: 0.85rem; padding: 4px 10px;">{{ p.stock }} {{ p.get_unit_display }}</span>
+                            {% else %}
+                                <span class="stock-badge low" style="font-size: 0.85rem; padding: 4px 10px;"><i class="fa-solid fa-triangle-exclamation"></i> {{ p.stock }} {{ p.get_unit_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            <button class="quick-cash-btn" style="background: #ecfdf5; border-color: #a7f3d0; color: #047857; padding: 0.4rem 0.8rem; font-size: 0.82rem;" 
+                                    onclick="openSupplyModal('{{ p.id }}')">
+                                <i class="fa-solid fa-plus-circle"></i> + Приход
+                            </button>
+                        </td>
+                        <td>
+                            {% if p.is_active %}
+                                <span style="color: var(--accent-primary); font-size: 0.85rem;"><i class="fa-solid fa-circle" style="font-size: 0.5rem; vertical-align: middle;"></i> Активен</span>
+                            {% else %}
+                                <span style="color: var(--accent-rose); font-size: 0.85rem;">Неактивен</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                            На складе пока нет товаров.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 2: Supplies History Table -->
+    <div id="view-supplies" class="tab-content-view" style="display: none;">
+        <div class="table-container">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th># / Дата</th>
+                        <th>Товар</th>
+                        <th>Сколько пришло (Приход)</th>
+                        <th>Остаток ДО</th>
+                        <th>Остаток ПОСЛЕ</th>
+                        <th>Закупочная цена</th>
+                        <th>Поставщик / Заметка</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in supplies %}
+                    <tr>
+                        <td>
+                            <div style="font-weight: 600;">#{{ s.id }}</div>
+                            <div style="font-size: 0.78rem; color: var(--text-muted);">{{ s.created_at|date:"d.m.Y H:i" }}</div>
+                        </td>
+                        <td>
+                            <strong style="color: var(--text-main);">{{ s.product.name }}</strong>
+                            {% if s.product.category %}
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ s.product.category.name }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="stock-badge ok" style="font-size: 0.9rem; padding: 4px 12px; background: #d1fae5; color: #047857; font-weight: 700;">
+                                +{{ s.quantity_added }} {{ s.product.get_unit_display }}
+                            </span>
+                        </td>
+                        <td><span style="color: var(--text-muted);">{{ s.previous_stock }} {{ s.product.get_unit_display }}</span></td>
+                        <td><strong style="color: var(--accent-primary);">{{ s.new_stock }} {{ s.product.get_unit_display }}</strong></td>
+                        <td>
+                            {% if s.cost_price %}
+                                <span>{{ s.cost_price|floatformat:0 }} ₸</span>
+                            {% else %}
+                                <span style="color: var(--text-muted);">---</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span style="font-size: 0.85rem; color: var(--text-main);">{{ s.supplier|default:"---" }}</span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                            История приходов пока пуста. Нажмите кнопку <strong>"+ Оформить Приход"</strong> для зачисления товара.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal-overlay" id="add-product-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title"><i class="fa-solid fa-box" style="color: #3b82f6;"></i> Добавить новый товар</h3>
+            <button class="close-modal" onclick="closeAddProductModal()">&times;</button>
+        </div>
+
+        <form method="POST" action="{% url 'products_list' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Название товара *</label>
+                <input type="text" name="name" required placeholder="Например: Сок Coca-Cola 1.5L">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Штрих-код (Barcode)</label>
+                    <input type="text" name="barcode" placeholder="4780001234567">
+                </div>
+                <div class="form-group">
+                    <label>Категория</label>
+                    <select name="category">
+                        <option value="">-- Выберите категорию --</option>
+                        {% for c in categories %}
+                            <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Цена продажи (₸) *</label>
+                    <input type="number" name="price" required placeholder="1500">
+                </div>
+                <div class="form-group">
+                    <label>Себестоимость (₸)</label>
+                    <input type="number" name="cost_price" placeholder="1200">
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Начальный остаток на складе</label>
+                    <input type="number" name="stock" value="50">
+                </div>
+                <div class="form-group">
+                    <label>Единица измерения</label>
+                    <select name="unit">
+                        <option value="dona">Штука (шт)</option>
+                        <option value="kg">Килограмм (кг)</option>
+                        <option value="litr">Литр (л)</option>
+                        <option value="qadoq">Упаковка (упак)</option>
+                        <option value="metr">Метр (м)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+                <button type="submit" class="checkout-btn" style="flex: 1; background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                    <i class="fa-solid fa-save"></i> Сохранить товар
+                </button>
+                <button type="button" class="quick-cash-btn" style="padding: 0.8rem 1.2rem;" onclick="closeAddProductModal()">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Supply Modal (Приход Товаров) -->
+<div class="modal-overlay" id="add-supply-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title"><i class="fa-solid fa-truck-ramp-box" style="color: #10b981;"></i> Оформить Приход Товара</h3>
+            <button class="close-modal" onclick="closeSupplyModal()">&times;</button>
+        </div>
+
+        <form method="POST" action="{% url 'products_list' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_supply">
+
+            <div class="form-group">
+                <label>Выберите товар *</label>
+                <select name="product_id" id="supply_product_select" required onchange="onSupplyProductChange()">
+                    <option value="">-- Выберите товар из списка --</option>
+                    {% for p in products %}
+                        <option value="{{ p.id }}" data-stock="{{ p.stock }}" data-unit="{{ p.get_unit_display }}" data-cost="{{ p.cost_price|floatformat:0 }}">
+                            {{ p.name }} (Остаток: {{ p.stock }} {{ p.get_unit_display }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Calculation Banner -->
+            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.88rem;">
+                    <span style="color: var(--text-muted);">Текущий остаток на складе:</span>
+                    <strong id="display_curr_stock" style="color: var(--text-main);">0 шт</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.88rem;">
+                    <span style="color: var(--text-muted);">Приход (Сколько завезли):</span>
+                    <strong id="display_added_qty" style="color: #10b981;">+0 шт</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-top: 1px dashed #cbd5e1; padding-top: 0.5rem; font-size: 1rem;">
+                    <span style="font-weight: 600; color: var(--text-main);">Новый остаток (Итого станет):</span>
+                    <strong id="display_new_stock" style="color: var(--accent-primary); font-size: 1.15rem;">0 шт</strong>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Количество прихода *</label>
+                    <input type="number" name="quantity_added" id="supply_qty_input" required min="1" placeholder="Например: 50" oninput="calculateSupplyStock()">
+                </div>
+                <div class="form-group">
+                    <label>Закупочная цена / ед (₸)</label>
+                    <input type="number" name="cost_price" id="supply_cost_input" placeholder="например: 1200">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Поставщик / Накладная / Эслатма</label>
+                <input type="text" name="supplier" placeholder="Например: OOO Distrib, Накладная №402">
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+                <button type="submit" class="checkout-btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669);">
+                    <i class="fa-solid fa-check-circle"></i> Подтвердить Приход
+                </button>
+                <button type="button" class="quick-cash-btn" style="padding: 0.8rem 1.2rem;" onclick="closeSupplyModal()">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function switchTab(tabName) {
+        document.getElementById('view-products').style.display = tabName === 'products' ? 'block' : 'none';
+        document.getElementById('view-supplies').style.display = tabName === 'supplies' ? 'block' : 'none';
+        
+        document.getElementById('tab-products-btn').classList.toggle('active', tabName === 'products');
+        document.getElementById('tab-supplies-btn').classList.toggle('active', tabName === 'supplies');
+    }
+
+    function openAddProductModal() {
+        document.getElementById('add-product-modal').classList.add('active');
+    }
+    function closeAddProductModal() {
+        document.getElementById('add-product-modal').classList.remove('active');
+    }
+
+    function openSupplyModal(productId = null) {
+        const modal = document.getElementById('add-supply-modal');
+        modal.classList.add('active');
+        
+        if (productId) {
+            const select = document.getElementById('supply_product_select');
+            select.value = productId;
+            onSupplyProductChange();
+        }
+    }
+
+    function closeSupplyModal() {
+        document.getElementById('add-supply-modal').classList.remove('active');
+    }
+
+    function onSupplyProductChange() {
+        const select = document.getElementById('supply_product_select');
+        const selectedOption = select.options[select.selectedIndex];
+        
+        if (!selectedOption || !selectedOption.value) {
+            document.getElementById('display_curr_stock').innerText = '0 шт';
+            document.getElementById('display_added_qty').innerText = '+0 шт';
+            document.getElementById('display_new_stock').innerText = '0 шт';
+            document.getElementById('supply_cost_input').value = '';
+            return;
+        }
+
+        const currentStock = parseInt(selectedOption.getAttribute('data-stock') || '0');
+        const unit = selectedOption.getAttribute('data-unit') || 'шт';
+        const costPrice = selectedOption.getAttribute('data-cost') || '';
+
+        document.getElementById('display_curr_stock').innerText = `${currentStock} ${unit}`;
+        document.getElementById('supply_cost_input').value = costPrice;
+
+        calculateSupplyStock();
+    }
+
+    function calculateSupplyStock() {
+        const select = document.getElementById('supply_product_select');
+        const selectedOption = select.options[select.selectedIndex];
+        
+        const currentStock = (selectedOption && selectedOption.value) ? parseInt(selectedOption.getAttribute('data-stock') || '0') : 0;
+        const unit = (selectedOption && selectedOption.value) ? (selectedOption.getAttribute('data-unit') || 'шт') : 'шт';
+        
+        const addedQty = parseInt(document.getElementById('supply_qty_input').value || '0');
+        const newStock = currentStock + (addedQty > 0 ? addedQty : 0);
+
+        document.getElementById('display_added_qty').innerText = `+${addedQty} ${unit}`;
+        document.getElementById('display_new_stock').innerText = `${newStock} ${unit}`;
+    }
+</script>
+{% endblock %}

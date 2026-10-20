@@ -1,0 +1,870 @@
+{% extends 'base.html' %}
+
+{% block title %}Кассовый Терминал | Smart POS (KZT ₸){% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <!-- Top Header -->
+    <header class="top-header">
+        <form method="GET" action="{% url 'pos_terminal' %}" class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" name="search" value="{{ search_query|default:'' }}" placeholder="Поиск товара по названию или штрих-коду..." autocomplete="off" id="search-input">
+            {% if selected_category %}
+                <input type="hidden" name="category" value="{{ selected_category }}">
+            {% endif %}
+        </form>
+
+        <div class="cashier-selector" id="cashier-badge" onclick="toggleCashierDropdown(event)" title="Kassirni tanlash">
+            <div class="cashier-mini-avatar" id="cashier-mini-avatar">{{ current_cashier_name|default:'?'|slice:':1'|upper }}</div>
+            <div class="status-dot" id="cashier-status-dot"></div>
+
+            <!-- Cashier Dropdown -->
+            <div class="cashier-dropdown" id="cashier-dropdown" onclick="event.stopPropagation()">
+                <div class="cashier-dropdown-title">
+                    <i class="fa-solid fa-users"></i> Кассирлар
+                </div>
+                {% for cashier in cashiers %}
+                <div class="cashier-dropdown-item {% if cashier.name == current_cashier_name %}active{% endif %}"
+                     onclick="selectCashier('{{ cashier.name|escapejs }}', this)">
+                    <div class="cashier-avatar">{{ cashier.name|slice:':1'|upper }}</div>
+                    <div class="cashier-item-info">
+                        <span class="cashier-item-name">{{ cashier.name }}</span>
+                        <span class="cashier-item-salary">{{ cashier.monthly_salary|floatformat:0 }} ₸/oy</span>
+                    </div>
+                    {% if cashier.name == current_cashier_name %}
+                    <i class="fa-solid fa-check cashier-check"></i>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <div style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+                    <i class="fa-solid fa-user-slash"></i> Kassirlar yo'q
+                </div>
+                {% endfor %}
+                <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 0.5rem; padding: 0.5rem 0.75rem 0;">
+                    <a href="{% url 'cashier_list' %}" style="font-size: 0.78rem; color: var(--accent-primary); text-decoration: none; display: flex; align-items: center; gap: 0.4rem;">
+                        <i class="fa-solid fa-gear"></i> Kassirlarni boshqarish
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Categories Filter Bar -->
+    <div class="categories-bar">
+        <a href="{% url 'pos_terminal' %}" class="category-pill {% if not selected_category %}active{% endif %}">
+            <i class="fa-solid fa-border-all"></i>
+            <span>Все товары</span>
+        </a>
+        {% for cat in categories %}
+        <a href="{% url 'pos_terminal' %}?category={{ cat.id }}{% if search_query %}&search={{ search_query }}{% endif %}" 
+           class="category-pill {% if selected_category == cat.id|stringformat:'s' %}active{% endif %}">
+            <i class="fa-solid {{ cat.icon }}"></i>
+            <span>{{ cat.name }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Products Grid -->
+    <div class="products-grid">
+        {% for product in products %}
+        <div class="product-card" onclick="addToCart({{ product.id }}, '{{ product.name|escapejs }}', {{ product.price }}, {{ product.stock }}, '{{ product.get_unit_display }}')">
+            <div class="product-card-top">
+                <div class="product-icon-container">
+                    <i class="fa-solid {{ product.icon }}"></i>
+                </div>
+                <div class="product-title">{{ product.name }}</div>
+            </div>
+            <div class="product-card-mid">
+                <div class="product-stock">
+                    {% if product.stock > 10 %}
+                        <span class="stock-badge ok"><i class="fa-solid fa-check"></i> {{ product.stock }} {{ product.get_unit_display }}</span>
+                    {% else %}
+                        <span class="stock-badge low"><i class="fa-solid fa-triangle-exclamation"></i> {{ product.stock }} {{ product.get_unit_display }}</span>
+                    {% endif %}
+                </div>
+                {% if product.barcode %}
+                    <div style="color: var(--text-muted); font-size: 0.7rem; margin-top: 2px;">#{{ product.barcode }}</div>
+                {% endif %}
+            </div>
+            <div class="product-footer">
+                <div class="product-price">{{ product.price|floatformat:0 }} ₸</div>
+                <div class="add-btn">
+                    <i class="fa-solid fa-plus"></i>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div style="grid-column: 1 / -1; text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-box-open" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+            <h3>Товары не найдены</h3>
+            <p style="font-size: 0.9rem;">Измените запрос поиска или выберите другую категорию.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- POS Cart Sidebar -->
+<aside class="cart-sidebar">
+    <div class="cart-header">
+        <div class="cart-title">
+            <i class="fa-solid fa-cart-shopping" style="color: var(--accent-primary);"></i>
+            <span>Корзина покупок</span>
+        </div>
+        <button class="clear-cart-btn" onclick="clearCart()">
+            <i class="fa-solid fa-trash-can"></i> Очистить
+        </button>
+    </div>
+
+    <!-- Cart Items List -->
+    <div class="cart-items" id="cart-items-container">
+        <div class="cart-empty" id="cart-empty-state">
+            <i class="fa-solid fa-basket-shopping"></i>
+            <p>Корзина пока пуста</p>
+            <span style="font-size: 0.8rem; opacity: 0.6;">Выберите товары для продажи</span>
+        </div>
+    </div>
+
+    <!-- Cart Footer & Total & Discount -->
+    <div class="cart-footer">
+        <div class="summary-row">
+            <span>Количество товаров:</span>
+            <strong id="cart-total-count">0 шт.</strong>
+        </div>
+        
+        <div class="summary-row">
+            <span>Сумма без скидки:</span>
+            <span id="cart-subtotal-price" style="font-weight: 600; color: var(--text-main);">0 ₸</span>
+        </div>
+
+        <!-- Stylish Discount Selector -->
+        <div class="discount-container">
+            <div class="discount-header">
+                <div class="discount-label">
+                    <i class="fa-solid fa-tags" style="color: var(--accent-primary);"></i>
+                    <span>Применить скидку</span>
+                </div>
+                <div class="discount-mode-toggle">
+                    <button type="button" class="mode-btn active" id="mode-btn-percent" onclick="setDiscountMode('percent')">%</button>
+                    <button type="button" class="mode-btn" id="mode-btn-amount" onclick="setDiscountMode('amount')">₸</button>
+                </div>
+            </div>
+
+            <div class="discount-presets" id="percent-presets">
+                <button type="button" class="disc-pill active" onclick="applyPresetDiscount(0)">0%</button>
+                <button type="button" class="disc-pill" onclick="applyPresetDiscount(5)">5%</button>
+                <button type="button" class="disc-pill" onclick="applyPresetDiscount(10)">10%</button>
+                <button type="button" class="disc-pill" onclick="applyPresetDiscount(15)">15%</button>
+                <button type="button" class="disc-pill" onclick="applyPresetDiscount(20)">20%</button>
+            </div>
+
+            <div class="discount-custom-input">
+                <input type="number" id="discount-val-input" min="0" placeholder="0" oninput="onCustomDiscountInput()">
+                <span class="disc-unit-addon" id="disc-unit-label">%</span>
+            </div>
+        </div>
+
+        <div class="summary-row discount-summary-row" id="discount-row" style="display: none;">
+            <span style="color: var(--accent-rose); font-weight: 600;">
+                <i class="fa-solid fa-scissors"></i> Скидка (<span id="discount-percent-badge">0%</span>):
+            </span>
+            <strong style="color: var(--accent-rose);" id="cart-discount-amount">-0 ₸</strong>
+        </div>
+
+        <div class="summary-row total">
+            <span>Итого к оплате:</span>
+            <span class="total-price" id="cart-total-price">0 ₸</span>
+        </div>
+
+        <button class="checkout-btn" id="checkout-btn" disabled onclick="openPaymentModal()">
+            <i class="fa-solid fa-credit-card"></i>
+            <span>Перейти к оплате</span>
+        </button>
+    </div>
+</aside>
+
+<!-- Payment Modal -->
+<div class="modal-overlay" id="payment-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Оформление оплаты</h3>
+            <button class="close-modal" onclick="closePaymentModal()">&times;</button>
+        </div>
+
+        <div class="payment-breakdown-box">
+            <div class="p-row">
+                <span>Сумма без скидки:</span>
+                <span id="modal-subtotal-amount">0 ₸</span>
+            </div>
+            <div class="p-row discount" id="modal-discount-row" style="display: none;">
+                <span>Скидка:</span>
+                <span id="modal-discount-amount" style="color: var(--accent-rose); font-weight: 700;">-0 ₸</span>
+            </div>
+            <div class="p-row total-row">
+                <span>К оплате:</span>
+                <strong id="modal-total-amount">0 ₸</strong>
+            </div>
+        </div>
+
+        <!-- Payment Method Options -->
+        <label style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; display: block;">Выберите способ оплаты:</label>
+        <div class="payment-methods">
+            <button type="button" class="method-btn active" id="btn-method-cash" onclick="setPaymentMethod('cash')">
+                <i class="fa-solid fa-money-bill-wave"></i>
+                <span>Наличные</span>
+            </button>
+            <button type="button" class="method-btn" id="btn-method-card" onclick="setPaymentMethod('card')">
+                <i class="fa-solid fa-credit-card"></i>
+                <span>Карта</span>
+            </button>
+            <button type="button" class="method-btn" id="btn-method-click" onclick="setPaymentMethod('click')">
+                <i class="fa-solid fa-mobile-screen-button"></i>
+                <span>Kaspi / QR</span>
+            </button>
+        </div>
+
+        <!-- Cash Input & Change Calculation -->
+        <div id="cash-payment-section">
+            <div class="form-group">
+                <label>Внесено клиентом (Тенге ₸):</label>
+                <input type="number" id="paid-amount-input" placeholder="Например: 5000" oninput="calculateChange()">
+            </div>
+
+            <div class="quick-cash">
+                <button type="button" class="quick-cash-btn" onclick="addQuickCash(500)">+500 ₸</button>
+                <button type="button" class="quick-cash-btn" onclick="addQuickCash(1000)">+1,000 ₸</button>
+                <button type="button" class="quick-cash-btn" onclick="addQuickCash(2000)">+2,000 ₸</button>
+                <button type="button" class="quick-cash-btn" onclick="addQuickCash(5000)">+5,000 ₸</button>
+                <button type="button" class="quick-cash-btn" onclick="addQuickCash(10000)">+10,000 ₸</button>
+                <button type="button" class="quick-cash-btn" onclick="addQuickCash(20000)">+20,000 ₸</button>
+            </div>
+
+            <div class="change-box">
+                <span style="font-size: 0.9rem; color: var(--text-muted);">Сдача клиенту:</span>
+                <span class="change-amount" id="change-amount-display">0 ₸</span>
+            </div>
+        </div>
+
+        <button class="checkout-btn" id="submit-sale-btn" onclick="submitSale()">
+            <i class="fa-solid fa-print"></i>
+            <span>Завершить продажу и выдать чек</span>
+        </button>
+    </div>
+</div>
+
+<!-- Receipt Modal -->
+<div class="modal-overlay" id="receipt-modal">
+    <div class="modal-content" style="max-width: 420px; background: #ffffff;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="color: var(--text-main);"><i class="fa-solid fa-receipt" style="color: var(--accent-primary)"></i> Чек готов!</h3>
+            <button class="close-modal" onclick="closeReceiptModal()">&times;</button>
+        </div>
+
+        <div class="receipt-paper" id="receipt-printable-area">
+            <div class="receipt-header">
+                <div class="receipt-title">МАГАЗИН "SMART KASSA"</div>
+                <div>г. Алматы, пр. Абая, 150</div>
+                <div>Тел: +7 (707) 123-45-67</div>
+                <div class="receipt-divider"></div>
+                <div>Чек №: <strong id="rec-number">CHK-000000</strong></div>
+                <div>Дата: <span id="rec-date">2026-09-17 12:00</span></div>
+                <div>Кассир: Али Валиев</div>
+            </div>
+
+            <table class="receipt-table">
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th class="num">Кол-во</th>
+                        <th class="num">Сумма</th>
+                    </tr>
+                </thead>
+                <tbody id="rec-items-body">
+                    <!-- Dynamic Receipt Items -->
+                </tbody>
+            </table>
+
+            <div class="receipt-divider"></div>
+
+            <div id="rec-subtotal-row" style="display: none; justify-content: space-between; font-size: 0.85rem; margin-top: 0.25rem;">
+                <span>Сумма без скидки:</span>
+                <span id="rec-subtotal-amount">0 ₸</span>
+            </div>
+            <div id="rec-discount-row" style="display: none; justify-content: space-between; font-size: 0.85rem; margin-top: 0.25rem; color: #e11d48; font-weight: 600;">
+                <span>СКИДКА (<span id="rec-discount-percent">0%</span>):</span>
+                <span id="rec-discount-amount">-0 ₸</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.05rem; margin-top: 0.5rem;">
+                <span>ИТОГО К ОПЛАТЕ:</span>
+                <span id="rec-total-amount">0 ₸</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
+                <span>Способ оплаты:</span>
+                <span id="rec-pay-method">Наличные</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
+                <span>Внесено:</span>
+                <span id="rec-paid-amount">0 ₸</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 0.25rem; color: #000;">
+                <span>Сдача:</span>
+                <span id="rec-change-amount">0 ₸</span>
+            </div>
+
+            <div class="receipt-divider"></div>
+            <div style="text-align: center; margin-top: 1rem; font-size: 0.8rem; color: #555;">
+                Спасибо за покупку!<br>Ждем вас снова!
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+            <button class="checkout-btn" style="flex: 1;" onclick="window.print()">
+                <i class="fa-solid fa-print"></i> Печать
+            </button>
+            <button class="quick-cash-btn" style="padding: 0.8rem 1.2rem; font-weight: 600;" onclick="closeReceiptModal()">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===== Cashier Selector Dropdown ===== */
+.cashier-selector {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    padding: 0;
+    background: none;
+    border: none;
+}
+.cashier-selector:hover .cashier-mini-avatar {
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.35);
+    transform: scale(1.08);
+}
+/* Avatar circle */
+.cashier-mini-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981, #059669);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #fff;
+    flex-shrink: 0;
+    transition: box-shadow 0.2s, transform 0.2s;
+    cursor: pointer;
+}
+.cashier-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    min-width: 260px;
+    background: var(--bg-card, #1e293b);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    z-index: 9999;
+    overflow: hidden;
+    animation: dropdownFadeIn 0.18s ease;
+    padding-bottom: 0.75rem;
+}
+.cashier-dropdown.open {
+    display: block;
+}
+@keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.cashier-dropdown-title {
+    padding: 0.75rem 1rem 0.5rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted, #94a3b8);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 0.35rem;
+}
+.cashier-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 8px;
+    margin: 0 0.4rem;
+}
+.cashier-dropdown-item:hover {
+    background: rgba(255,255,255,0.07);
+}
+.cashier-dropdown-item.active {
+    background: rgba(16, 185, 129, 0.12);
+}
+.cashier-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981, #059669);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #fff;
+    flex-shrink: 0;
+}
+.cashier-dropdown-item.active .cashier-avatar {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.4);
+}
+.cashier-item-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.cashier-item-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main, #f1f5f9);
+}
+.cashier-item-salary {
+    font-size: 0.73rem;
+    color: var(--text-muted, #94a3b8);
+}
+.cashier-check {
+    color: #10b981;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let cart = [];
+    let selectedPaymentMethod = 'cash';
+    let discountMode = 'percent'; // 'percent' or 'amount'
+    let discountPercent = 0;
+    let discountAmount = 0;
+
+    function addToCart(id, name, price, maxStock, unitDisplay = 'шт') {
+        const existingItem = cart.find(item => item.id === id);
+        if (existingItem) {
+            if (existingItem.quantity + 1 > maxStock) {
+                showToast(`На складе осталось всего ${maxStock} ${unitDisplay}!`, 'error');
+                return;
+            }
+            existingItem.quantity += 1;
+        } else {
+            if (maxStock <= 0) {
+                showToast(`Данный товар закончился на складе!`, 'error');
+                return;
+            }
+            cart.push({
+                id: id,
+                name: name,
+                price: price,
+                quantity: 1,
+                maxStock: maxStock,
+                unitDisplay: unitDisplay
+            });
+        }
+        updateCartUI();
+        showToast(`Товар "${name}" добавлен в корзину`);
+    }
+
+    function updateQuantity(id, change) {
+        const item = cart.find(i => i.id === id);
+        if (!item) return;
+
+        const newQty = item.quantity + change;
+        if (newQty <= 0) {
+            cart = cart.filter(i => i.id !== id);
+        } else if (newQty > item.maxStock) {
+            showToast(`Максимум на складе ${item.maxStock} ${item.unitDisplay}!`, 'error');
+            return;
+        } else {
+            item.quantity = newQty;
+        }
+        updateCartUI();
+    }
+
+    function removeFromCart(id) {
+        cart = cart.filter(i => i.id !== id);
+        updateCartUI();
+    }
+
+    function clearCart() {
+        if (cart.length === 0) return;
+        cart = [];
+        discountPercent = 0;
+        discountAmount = 0;
+        document.getElementById('discount-val-input').value = '';
+        resetPresetPills(0);
+        updateCartUI();
+        showToast('Корзина очищена');
+    }
+
+    function formatMoney(amount) {
+        return new Intl.NumberFormat('ru-RU').format(Math.round(amount));
+    }
+
+    function setDiscountMode(mode) {
+        discountMode = mode;
+        document.getElementById('mode-btn-percent').classList.toggle('active', mode === 'percent');
+        document.getElementById('mode-btn-amount').classList.toggle('active', mode === 'amount');
+        document.getElementById('percent-presets').style.display = mode === 'percent' ? 'flex' : 'none';
+        document.getElementById('disc-unit-label').innerText = mode === 'percent' ? '%' : '₸';
+        
+        // Reset values on mode change
+        discountPercent = 0;
+        discountAmount = 0;
+        document.getElementById('discount-val-input').value = '';
+        resetPresetPills(0);
+        updateCartUI();
+    }
+
+    function applyPresetDiscount(pct) {
+        discountMode = 'percent';
+        setDiscountMode('percent');
+        discountPercent = pct;
+        discountAmount = 0;
+        document.getElementById('discount-val-input').value = pct > 0 ? pct : '';
+        resetPresetPills(pct);
+        updateCartUI();
+    }
+
+    function resetPresetPills(activePct) {
+        const pills = document.querySelectorAll('.disc-pill');
+        pills.forEach(pill => {
+            const val = parseInt(pill.innerText);
+            pill.classList.toggle('active', val === activePct);
+        });
+    }
+
+    function onCustomDiscountInput() {
+        const val = parseFloat(document.getElementById('discount-val-input').value) || 0;
+        if (discountMode === 'percent') {
+            discountPercent = Math.min(100, Math.max(0, val));
+            discountAmount = 0;
+            resetPresetPills(discountPercent);
+        } else {
+            discountAmount = Math.max(0, val);
+            discountPercent = 0;
+            resetPresetPills(-1);
+        }
+        updateCartUI();
+    }
+
+    function getCartTotals() {
+        const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        let calculatedDiscount = 0;
+        let effectivePercent = 0;
+
+        if (discountMode === 'percent' && discountPercent > 0) {
+            calculatedDiscount = Math.round(subtotal * (discountPercent / 100));
+            effectivePercent = discountPercent;
+        } else if (discountMode === 'amount' && discountAmount > 0) {
+            calculatedDiscount = Math.min(discountAmount, subtotal);
+            effectivePercent = subtotal > 0 ? ((calculatedDiscount / subtotal) * 100).toFixed(1) : 0;
+        }
+
+        const total = Math.max(0, subtotal - calculatedDiscount);
+        return { subtotal, calculatedDiscount, effectivePercent, total };
+    }
+
+    function updateCartUI() {
+        const container = document.getElementById('cart-items-container');
+        const emptyState = document.getElementById('cart-empty-state');
+        const totalCountEl = document.getElementById('cart-total-count');
+        const subtotalPriceEl = document.getElementById('cart-subtotal-price');
+        const totalPriceEl = document.getElementById('cart-total-price');
+        const discountRowEl = document.getElementById('discount-row');
+        const discountAmountEl = document.getElementById('cart-discount-amount');
+        const discountBadgeEl = document.getElementById('discount-percent-badge');
+        const checkoutBtn = document.getElementById('checkout-btn');
+
+        if (cart.length === 0) {
+            if (container && emptyState) {
+                container.innerHTML = '';
+                container.appendChild(emptyState);
+                emptyState.style.display = 'flex';
+            }
+            if (totalCountEl) totalCountEl.innerText = '0 шт.';
+            if (subtotalPriceEl) subtotalPriceEl.innerText = '0 ₸';
+            if (totalPriceEl) totalPriceEl.innerText = '0 ₸';
+            if (discountRowEl) discountRowEl.style.display = 'none';
+            if (checkoutBtn) checkoutBtn.disabled = true;
+            return;
+        }
+
+        if (emptyState) emptyState.style.display = 'none';
+        if (container) container.innerHTML = '';
+
+        let totalQty = 0;
+
+        cart.forEach(item => {
+            const itemTotal = item.price * item.quantity;
+            totalQty += item.quantity;
+
+            const div = document.createElement('div');
+            div.className = 'cart-item';
+            div.innerHTML = `
+                <div class="cart-item-info">
+                    <div class="cart-item-name">${item.name}</div>
+                    <div class="cart-item-price">${formatMoney(item.price)} ₸</div>
+                </div>
+                <div class="cart-item-qty">
+                    <button class="qty-btn" onclick="updateQuantity(${item.id}, -1)">-</button>
+                    <span class="qty-val">${item.quantity}</span>
+                    <button class="qty-btn" onclick="updateQuantity(${item.id}, 1)">+</button>
+                </div>
+                <div class="cart-item-total">${formatMoney(itemTotal)} ₸</div>
+                <button style="background:none; border:none; color: var(--accent-rose); cursor:pointer; font-size:0.85rem;" onclick="removeFromCart(${item.id})">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+            if (container) container.appendChild(div);
+        });
+
+        const { subtotal, calculatedDiscount, effectivePercent, total } = getCartTotals();
+
+        if (totalCountEl) totalCountEl.innerText = `${totalQty} шт.`;
+        if (subtotalPriceEl) subtotalPriceEl.innerText = `${formatMoney(subtotal)} ₸`;
+
+        if (discountRowEl) {
+            if (calculatedDiscount > 0) {
+                discountRowEl.style.display = 'flex';
+                if (discountBadgeEl) discountBadgeEl.innerText = `${effectivePercent}%`;
+                if (discountAmountEl) discountAmountEl.innerText = `-${formatMoney(calculatedDiscount)} ₸`;
+            } else {
+                discountRowEl.style.display = 'none';
+            }
+        }
+
+        if (totalPriceEl) totalPriceEl.innerText = `${formatMoney(total)} ₸`;
+        if (checkoutBtn) checkoutBtn.disabled = false;
+    }
+
+    function openPaymentModal() {
+        if (cart.length === 0) return;
+        const { subtotal, calculatedDiscount, effectivePercent, total } = getCartTotals();
+
+        document.getElementById('modal-subtotal-amount').innerText = `${formatMoney(subtotal)} ₸`;
+        
+        const discRow = document.getElementById('modal-discount-row');
+        if (calculatedDiscount > 0) {
+            discRow.style.display = 'flex';
+            document.getElementById('modal-discount-amount').innerText = `-${formatMoney(calculatedDiscount)} ₸ (${effectivePercent}%)`;
+        } else {
+            discRow.style.display = 'none';
+        }
+
+        document.getElementById('modal-total-amount').innerText = `${formatMoney(total)} ₸`;
+        document.getElementById('paid-amount-input').value = total;
+        calculateChange();
+
+        document.getElementById('payment-modal').classList.add('active');
+    }
+
+    function closePaymentModal() {
+        document.getElementById('payment-modal').classList.remove('active');
+    }
+
+    function setPaymentMethod(method) {
+        selectedPaymentMethod = method;
+        document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`btn-method-${method}`).classList.add('active');
+
+        const cashSection = document.getElementById('cash-payment-section');
+        if (method === 'cash') {
+            cashSection.style.display = 'block';
+        } else {
+            cashSection.style.display = 'none';
+        }
+    }
+
+    function addQuickCash(amount) {
+        const input = document.getElementById('paid-amount-input');
+        const currentVal = parseFloat(input.value) || 0;
+        input.value = currentVal + amount;
+        calculateChange();
+    }
+
+    function calculateChange() {
+        const { total } = getCartTotals();
+        const paid = parseFloat(document.getElementById('paid-amount-input').value) || 0;
+        const change = Math.max(0, paid - total);
+        document.getElementById('change-amount-display').innerText = `${formatMoney(change)} ₸`;
+    }
+
+    async function submitSale() {
+        const { subtotal, calculatedDiscount, effectivePercent, total } = getCartTotals();
+        const paid = parseFloat(document.getElementById('paid-amount-input').value) || total;
+
+        if (selectedPaymentMethod === 'cash' && paid < total) {
+            showToast("Внесенной суммы недостаточно!", 'error');
+            return;
+        }
+
+        const payload = {
+            items: cart.map(item => ({ id: item.id, quantity: item.quantity })),
+            payment_method: selectedPaymentMethod,
+            paid_amount: paid,
+            discount_percent: discountMode === 'percent' ? discountPercent : 0,
+            discount_amount: discountMode === 'amount' ? discountAmount : calculatedDiscount
+        };
+
+        const submitBtn = document.getElementById('submit-sale-btn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+
+        try {
+            const response = await fetch("{% url 'create_sale_api' %}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                closePaymentModal();
+                showReceiptModal(result);
+                cart = [];
+                discountPercent = 0;
+                discountAmount = 0;
+                document.getElementById('discount-val-input').value = '';
+                resetPresetPills(0);
+                updateCartUI();
+                showToast("Продажа успешно завершена!");
+            } else {
+                showToast(result.error || "Произошла ошибка", 'error');
+            }
+        } catch (e) {
+            showToast("Ошибка соединения с сервером!", 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-print"></i> <span>Завершить продажу и выдать чек</span>';
+        }
+    }
+
+    function showReceiptModal(data) {
+        document.getElementById('rec-number').innerText = data.receipt_number;
+        document.getElementById('rec-date').innerText = data.created_at;
+
+        const subtotalRow = document.getElementById('rec-subtotal-row');
+        const discountRow = document.getElementById('rec-discount-row');
+
+        if (data.discount_amount > 0) {
+            subtotalRow.style.display = 'flex';
+            document.getElementById('rec-subtotal-amount').innerText = `${formatMoney(data.subtotal_amount)} ₸`;
+
+            discountRow.style.display = 'flex';
+            document.getElementById('rec-discount-percent').innerText = `${data.discount_percent}%`;
+            document.getElementById('rec-discount-amount').innerText = `-${formatMoney(data.discount_amount)} ₸`;
+        } else {
+            subtotalRow.style.display = 'none';
+            discountRow.style.display = 'none';
+        }
+
+        document.getElementById('rec-total-amount').innerText = `${formatMoney(data.total_amount)} ₸`;
+        document.getElementById('rec-paid-amount').innerText = `${formatMoney(data.paid_amount)} ₸`;
+        document.getElementById('rec-change-amount').innerText = `${formatMoney(data.change_amount)} ₸`;
+
+        let methodText = 'Наличные';
+        if (selectedPaymentMethod === 'card') methodText = 'Банковская карта';
+        if (selectedPaymentMethod === 'click') methodText = 'Kaspi / QR';
+        document.getElementById('rec-pay-method').innerText = methodText;
+
+        const itemsBody = document.getElementById('rec-items-body');
+        itemsBody.innerHTML = '';
+        cart.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.name}</td>
+                <td class="num">${item.quantity} ${item.unitDisplay || 'шт'}</td>
+                <td class="num">${formatMoney(item.price * item.quantity)} ₸</td>
+            `;
+            itemsBody.appendChild(tr);
+        });
+
+        document.getElementById('receipt-modal').classList.add('active');
+    }
+
+    function closeReceiptModal() {
+        document.getElementById('receipt-modal').classList.remove('active');
+    }
+
+    // ===== Cashier Dropdown =====
+    let currentCashierName = "{{ current_cashier_name|escapejs }}";
+
+    function toggleCashierDropdown(event) {
+        event.stopPropagation();
+        const dropdown = document.getElementById('cashier-dropdown');
+        const badge = document.getElementById('cashier-badge');
+        const isOpen = dropdown.classList.contains('open');
+        dropdown.classList.toggle('open');
+        badge.classList.toggle('dropdown-open', !isOpen);
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function() {
+        const dropdown = document.getElementById('cashier-dropdown');
+        const badge = document.getElementById('cashier-badge');
+        if (dropdown) dropdown.classList.remove('open');
+        if (badge) badge.classList.remove('dropdown-open');
+    });
+
+    async function selectCashier(name, el) {
+        // Update active styles
+        document.querySelectorAll('.cashier-dropdown-item').forEach(item => {
+            item.classList.remove('active');
+            const check = item.querySelector('.cashier-check');
+            if (check) check.remove();
+        });
+        el.classList.add('active');
+
+        // Add checkmark
+        const check = document.createElement('i');
+        check.className = 'fa-solid fa-check cashier-check';
+        el.appendChild(check);
+
+        // Update badge name and avatar
+        currentCashierName = name;
+        document.getElementById('cashier-badge-name').innerText = name;
+        const avatarEl = document.getElementById('cashier-mini-avatar');
+        if (avatarEl) avatarEl.innerText = name.charAt(0).toUpperCase();
+
+        // Close dropdown
+        document.getElementById('cashier-dropdown').classList.remove('open');
+
+        // Save to backend session
+        try {
+            await fetch("{% url 'set_cashier_api' %}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cashier_name: name })
+            });
+        } catch(e) {
+            console.warn('Kassir saqlashda xato:', e);
+        }
+
+        showToast(`Кассир: ${name} танланди`, 'success');
+    }
+</script>
+{% endblock %}

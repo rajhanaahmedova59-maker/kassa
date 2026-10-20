@@ -1,0 +1,344 @@
+{% extends 'base.html' %}
+
+{% block title %}Кассиры | POS Система{% endblock %}
+
+{% block content %}
+<div class="main-content" style="max-width: 1200px; margin: 0 auto; width: 100%; overflow-y: auto; height: 100vh; padding-bottom: 3rem;">
+
+    <!-- Top Header -->
+    <div class="top-header" style="margin-bottom: 1rem; flex-wrap: wrap;">
+        <div>
+            <h2><i class="fa-solid fa-users" style="color: var(--accent-primary)"></i> Управление кассирами</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Оклад, дневная ставка и статистика продаж каждого кассира</p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button class="checkout-btn" style="width: auto; padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #8b5cf6, #7c3aed);" onclick="openAddModal()">
+                <i class="fa-solid fa-user-plus"></i> + Добавить кассира
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1.5rem;">
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #f3e8ff; color: #8b5cf6; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-solid fa-users"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Всего кассиров</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-main);">{{ cashier_count }} <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">чел.</span></div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #fef3c7; color: #d97706; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-solid fa-money-bill-wave"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Общий фонд зарплат</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: #d97706;">{{ total_monthly_salary_fund|floatformat:0 }} <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">₸/мес</span></div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #ecfdf5; color: #10b981; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-solid fa-calendar-day"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Дневной фонд зарплат</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: #10b981;">{{ total_daily_fund|floatformat:0 }} <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">₸/день</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cashier Cards Grid -->
+    {% if cashier_stats %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">
+        {% for stat in cashier_stats %}
+        <div class="stat-card" style="padding: 1.5rem; border: 1px solid rgba(139,92,246,0.15); border-radius: 16px; position: relative; overflow: hidden;">
+            <!-- Background accent -->
+            <div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(124,58,237,0.04)); border-radius: 0 16px 0 100%;"></div>
+
+            <!-- Header Row -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+                <div style="display: flex; align-items: center; gap: 0.875rem;">
+                    <!-- Avatar -->
+                    <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #8b5cf6, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800; color: white; flex-shrink: 0;">
+                        {{ stat.cashier.name|first|upper }}
+                    </div>
+                    <div>
+                        <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">{{ stat.cashier.name }}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Кассир · Активен</div>
+                    </div>
+                </div>
+                <!-- Action buttons -->
+                <div style="display: flex; gap: 0.5rem;">
+                    <button onclick="openEditModal({{ stat.cashier.id }}, '{{ stat.cashier.name }}', {{ stat.cashier.monthly_salary }})"
+                            style="background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.25); color: #8b5cf6; border-radius: 8px; padding: 0.4rem 0.7rem; cursor: pointer; font-size: 0.8rem; transition: all 0.2s;"
+                            onmouseover="this.style.background='rgba(139,92,246,0.2)'" onmouseout="this.style.background='rgba(139,92,246,0.1)'">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button onclick="deleteCashier({{ stat.cashier.id }}, '{{ stat.cashier.name }}')"
+                            style="background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.25); color: #f43f5e; border-radius: 8px; padding: 0.4rem 0.7rem; cursor: pointer; font-size: 0.8rem; transition: all 0.2s;"
+                            onmouseover="this.style.background='rgba(244,63,94,0.2)'" onmouseout="this.style.background='rgba(244,63,94,0.1)'">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Salary Info Row -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.875rem; margin-bottom: 1.25rem;">
+                <!-- Monthly salary -->
+                <div style="background: linear-gradient(135deg, rgba(217,119,6,0.08), rgba(217,119,6,0.04)); border: 1px solid rgba(217,119,6,0.2); border-radius: 12px; padding: 0.875rem;">
+                    <div style="font-size: 0.72rem; color: #92400e; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem;">
+                        <i class="fa-solid fa-money-bill-wave" style="margin-right: 4px;"></i>Оклад в месяц
+                    </div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: #d97706;">
+                        {{ stat.monthly_salary|floatformat:0 }}
+                    </div>
+                    <div style="font-size: 0.75rem; color: #92400e; margin-top: 2px;">&#8378; / месяц</div>
+                </div>
+                <!-- Daily salary -->
+                <div style="background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.04)); border: 1px solid rgba(16,185,129,0.2); border-radius: 12px; padding: 0.875rem;">
+                    <div style="font-size: 0.72rem; color: #065f46; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem;">
+                        <i class="fa-solid fa-calendar-day" style="margin-right: 4px;"></i>Дневная ставка
+                    </div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: #10b981;">
+                        {{ stat.daily_salary|floatformat:0 }}
+                    </div>
+                    <div style="font-size: 0.75rem; color: #065f46; margin-top: 2px;">&#8378; / день (26 дней)</div>
+                </div>
+            </div>
+
+            <!-- Sales Stats -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.75rem;">Результаты продаж</div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.625rem;">
+
+                    <!-- Today -->
+                    <div style="text-align: center; background: var(--card-bg); border-radius: 10px; padding: 0.625rem; border: 1px solid var(--border-color);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Сегодня</div>
+                        <div style="font-size: 1rem; font-weight: 800; color: var(--text-main);">{{ stat.today_revenue|floatformat:0 }} &#8378;</div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">{{ stat.today_count }} чек</div>
+                    </div>
+
+                    <!-- This month -->
+                    <div style="text-align: center; background: var(--card-bg); border-radius: 10px; padding: 0.625rem; border: 1px solid var(--border-color);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Этот месяц</div>
+                        <div style="font-size: 1rem; font-weight: 800; color: #3b82f6;">{{ stat.month_revenue|floatformat:0 }} &#8378;</div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">{{ stat.month_count }} чек</div>
+                    </div>
+
+                    <!-- All time -->
+                    <div style="text-align: center; background: var(--card-bg); border-radius: 10px; padding: 0.625rem; border: 1px solid var(--border-color);">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">За всё время</div>
+                        <div style="font-size: 1rem; font-weight: 800; color: #8b5cf6;">{{ stat.total_revenue|floatformat:0 }} &#8378;</div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);">{{ stat.total_count }} чек</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <!-- Empty State -->
+    <div style="text-align: center; padding: 4rem 2rem; background: var(--card-bg); border-radius: 20px; border: 2px dashed var(--border-color);">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">&#128100;</div>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">Кассиры не добавлены</h3>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Нажмите кнопку выше, чтобы добавить первого кассира</p>
+        <button class="checkout-btn" style="width: auto; padding: 0.875rem 2rem; background: linear-gradient(135deg, #8b5cf6, #7c3aed);" onclick="openAddModal()">
+            <i class="fa-solid fa-user-plus"></i> Добавить кассира
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- Unregistered cashiers alert -->
+    {% if unregistered_cashiers %}
+    <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 1rem 1.25rem; margin-top: 1rem;">
+        <div style="font-size: 0.85rem; font-weight: 700; color: #d97706; margin-bottom: 0.5rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Незарегистрированные кассиры (есть в продажах):
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+            {% for name in unregistered_cashiers %}
+            <span style="background: rgba(245,158,11,0.15); color: #92400e; border-radius: 6px; padding: 0.25rem 0.625rem; font-size: 0.82rem; font-weight: 500;">{{ name }}</span>
+            {% endfor %}
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.5rem;">Нажмите «+ Добавить кассира», чтобы зарегистрировать их с окладом</div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ===================== MODALS ===================== -->
+
+<!-- Add Cashier Modal -->
+<div id="addCashierModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.55); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
+    <div style="background: var(--card-bg); border-radius: 20px; padding: 2rem; width: 100%; max-width: 420px; margin: 1rem; box-shadow: 0 25px 60px rgba(0,0,0,0.4); border: 1px solid var(--border-color); animation: slideUp 0.25s ease;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
+            <h3 style="font-size:1.15rem; font-weight:700; color:var(--text-main);">
+                <i class="fa-solid fa-user-plus" style="color:#8b5cf6;"></i> Добавить кассира
+            </h3>
+            <button onclick="closeAddModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_cashier">
+
+            <div style="margin-bottom:1rem;">
+                <label style="font-size:0.85rem; font-weight:600; color:var(--text-main); display:block; margin-bottom:0.4rem;">
+                    <i class="fa-solid fa-user"></i> Имя кассира
+                </label>
+                <input type="text" name="name" required placeholder="Например: Иванов Иван"
+                       style="width:100%; padding:0.75rem 1rem; background:var(--input-bg,rgba(255,255,255,0.05)); border:1px solid var(--border-color); border-radius:10px; color:var(--text-main); font-size:0.95rem; font-family:inherit; box-sizing:border-box; outline:none;"
+                       onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='var(--border-color)'">
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+                <label style="font-size:0.85rem; font-weight:600; color:var(--text-main); display:block; margin-bottom:0.4rem;">
+                    <i class="fa-solid fa-money-bill-wave"></i> Оклад в месяц (&#8378;)
+                </label>
+                <input type="number" name="monthly_salary" min="0" step="1000" placeholder="Например: 200000"
+                       style="width:100%; padding:0.75rem 1rem; background:var(--input-bg,rgba(255,255,255,0.05)); border:1px solid var(--border-color); border-radius:10px; color:var(--text-main); font-size:0.95rem; font-family:inherit; box-sizing:border-box; outline:none;"
+                       onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='var(--border-color)'"
+                       oninput="updateDailyPreview(this.value)">
+                <div id="dailyPreview" style="font-size:0.8rem; color:#10b981; margin-top:0.4rem; font-weight:500;"></div>
+            </div>
+
+            <div style="display:flex; gap:0.75rem;">
+                <button type="button" onclick="closeAddModal()" style="flex:1; padding:0.75rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; color:var(--text-muted); cursor:pointer; font-size:0.9rem; font-weight:600;">
+                    Отмена
+                </button>
+                <button type="submit" style="flex:2; padding:0.75rem; background:linear-gradient(135deg,#8b5cf6,#7c3aed); border:none; border-radius:10px; color:white; cursor:pointer; font-size:0.9rem; font-weight:700;">
+                    <i class="fa-solid fa-check"></i> Добавить
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Cashier Modal -->
+<div id="editCashierModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.55); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
+    <div style="background: var(--card-bg); border-radius: 20px; padding: 2rem; width: 100%; max-width: 420px; margin: 1rem; box-shadow: 0 25px 60px rgba(0,0,0,0.4); border: 1px solid var(--border-color); animation: slideUp 0.25s ease;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
+            <h3 style="font-size:1.15rem; font-weight:700; color:var(--text-main);">
+                <i class="fa-solid fa-pen" style="color:#8b5cf6;"></i> Редактировать кассира
+            </h3>
+            <button onclick="closeEditModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST" id="editForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="edit_cashier">
+            <input type="hidden" name="cashier_id" id="editCashierId">
+
+            <div style="margin-bottom:1rem;">
+                <label style="font-size:0.85rem; font-weight:600; color:var(--text-main); display:block; margin-bottom:0.4rem;">
+                    <i class="fa-solid fa-user"></i> Имя кассира
+                </label>
+                <input type="text" name="name" id="editName" required
+                       style="width:100%; padding:0.75rem 1rem; background:var(--input-bg,rgba(255,255,255,0.05)); border:1px solid var(--border-color); border-radius:10px; color:var(--text-main); font-size:0.95rem; font-family:inherit; box-sizing:border-box; outline:none;"
+                       onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='var(--border-color)'">
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+                <label style="font-size:0.85rem; font-weight:600; color:var(--text-main); display:block; margin-bottom:0.4rem;">
+                    <i class="fa-solid fa-money-bill-wave"></i> Оклад в месяц (&#8378;)
+                </label>
+                <input type="number" name="monthly_salary" id="editSalary" min="0" step="1000"
+                       style="width:100%; padding:0.75rem 1rem; background:var(--input-bg,rgba(255,255,255,0.05)); border:1px solid var(--border-color); border-radius:10px; color:var(--text-main); font-size:0.95rem; font-family:inherit; box-sizing:border-box; outline:none;"
+                       onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='var(--border-color)'"
+                       oninput="updateEditDailyPreview(this.value)">
+                <div id="editDailyPreview" style="font-size:0.8rem; color:#10b981; margin-top:0.4rem; font-weight:500;"></div>
+            </div>
+
+            <div style="display:flex; gap:0.75rem;">
+                <button type="button" onclick="closeEditModal()" style="flex:1; padding:0.75rem; background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; color:var(--text-muted); cursor:pointer; font-size:0.9rem; font-weight:600;">
+                    Отмена
+                </button>
+                <button type="submit" style="flex:2; padding:0.75rem; background:linear-gradient(135deg,#8b5cf6,#7c3aed); border:none; border-radius:10px; color:white; cursor:pointer; font-size:0.9rem; font-weight:700;">
+                    <i class="fa-solid fa-check"></i> Сохранить
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete form (hidden) -->
+<form id="deleteForm" method="POST" style="display:none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="delete_cashier">
+    <input type="hidden" name="cashier_id" id="deleteCashierId">
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+@keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+</style>
+<script>
+function openAddModal() {
+    document.getElementById('addCashierModal').style.display = 'flex';
+}
+function closeAddModal() {
+    document.getElementById('addCashierModal').style.display = 'none';
+}
+
+function openEditModal(id, name, salary) {
+    document.getElementById('editCashierId').value = id;
+    document.getElementById('editName').value = name;
+    document.getElementById('editSalary').value = salary;
+    updateEditDailyPreview(salary);
+    document.getElementById('editCashierModal').style.display = 'flex';
+}
+function closeEditModal() {
+    document.getElementById('editCashierModal').style.display = 'none';
+}
+
+function deleteCashier(id, name) {
+    if (confirm('Удалить кассира "' + name + '"? Это действие нельзя отменить!')) {
+        document.getElementById('deleteCashierId').value = id;
+        document.getElementById('deleteForm').submit();
+    }
+}
+
+function updateDailyPreview(val) {
+    const monthly = parseFloat(val) || 0;
+    const daily = Math.round(monthly / 26);
+    const el = document.getElementById('dailyPreview');
+    if (monthly > 0) {
+        el.innerHTML = '<i class="fa-solid fa-calendar-day"></i> Дневная ставка: <strong>' + daily.toLocaleString('ru-RU') + ' \u20b8</strong> (оклад \u00f7 26 дней)';
+    } else {
+        el.innerHTML = '';
+    }
+}
+
+function updateEditDailyPreview(val) {
+    const monthly = parseFloat(val) || 0;
+    const daily = Math.round(monthly / 26);
+    const el = document.getElementById('editDailyPreview');
+    if (monthly > 0) {
+        el.innerHTML = '<i class="fa-solid fa-calendar-day"></i> Дневная ставка: <strong>' + daily.toLocaleString('ru-RU') + ' \u20b8</strong> (оклад \u00f7 26 дней)';
+    } else {
+        el.innerHTML = '';
+    }
+}
+
+// Close modal on backdrop click
+['addCashierModal', 'editCashierModal'].forEach(function(id) {
+    document.getElementById(id).addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}
